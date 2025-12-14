@@ -3,6 +3,7 @@ from flask import Flask, Response, jsonify, request, send_from_directory
 from camera import mjpeg_stream, start_camera_thread
 from chassis import CENTER_POSITION
 from control import PARAM_TYPES, latest_overlay, latest_status, lock, params, save_params
+import vision
 
 app = Flask(__name__)
 
@@ -91,6 +92,13 @@ def estop():
         params["manual_servo"] = CENTER_POSITION
     save_params()
     return jsonify({"ok": True, "auto_drive": 0, "manual_motor": 0.0, "manual_servo": CENTER_POSITION})
+
+
+@app.route("/api/vision/reset", methods=["POST"])
+def vision_reset():
+    """清空视觉缓存，避免卡住时需要重启。"""
+    vision.reset_vision_state()
+    return jsonify({"ok": True, "msg": "vision state cleared"})
 
 
 if __name__ == "__main__":

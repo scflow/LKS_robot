@@ -26,6 +26,7 @@ const maxPoints = 120
 const streamError = ref(false)
 const overlayDismissed = ref(false)
 const showCameraLost = computed(() => streamError.value || !statusRef.value.camera_connected)
+const resettingVision = ref(false)
 
 const dataTheme = ref('dark')
 onMounted(() => {
@@ -129,6 +130,18 @@ const dismissOverlay = () => {
   overlayDismissed.value = true
 }
 
+const resetVision = async () => {
+  try {
+    resettingVision.value = true
+    await fetch('/api/vision/reset', { method: 'POST' })
+    streamError.value = false
+  } catch (e) {
+    console.error(e)
+  } finally {
+    resettingVision.value = false
+  }
+}
+
 const resizeOverlay = () => {
   if (!streamImg.value || !overlayCanvas.value) return
   overlayCanvas.value.width = streamImg.value.clientWidth || streamImg.value.naturalWidth || 0
@@ -184,19 +197,6 @@ const drawOverlay = () => {
   }
   drawCurve(curves.left || [], 'rgba(0,150,255,0.9)')
   drawCurve(curves.right || [], 'rgba(255,80,80,0.9)')
-
-  // Lane lines
-  const lines = overlay.lines || []
-  if (lines.length) {
-    ctx.strokeStyle = 'rgba(80, 160, 255, 0.9)'
-    ctx.lineWidth = 3
-    lines.forEach((ln: any) => {
-      ctx.beginPath()
-      ctx.moveTo(ln.x1 * sx, ln.y1 * sy)
-      ctx.lineTo(ln.x2 * sx, ln.y2 * sy)
-      ctx.stroke()
-    })
-  }
 }
 
 watch(
@@ -230,6 +230,7 @@ onUnmounted(() => {
             <option value="canny">Canny</option>
             <option value="roi">ROI</option>
           </select>
+          <button class="ghost" :disabled="resettingVision" @click="resetVision">{{ resettingVision ? '清空中...' : '清空视觉缓存' }}</button>
         </div>
         <div class="video-wrap">
           <DynamicIsland :err="statusRef.err" />

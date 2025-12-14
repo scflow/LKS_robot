@@ -17,6 +17,17 @@ _prev_right_fit: Tuple[float, float, float] = ()
 _filter_val = 0.0
 
 
+def reset_vision_state():
+    """清空缓存，避免卡死时需要重启。"""
+    global _M, _M_inv, _src_pts, _prev_left_fit, _prev_right_fit, _filter_val
+    _M = None
+    _M_inv = None
+    _src_pts = None
+    _prev_left_fit = ()
+    _prev_right_fit = ()
+    _filter_val = 0.0
+
+
 def _get_perspective_matrices(w: int, h: int):
     """计算鸟瞰变换矩阵，只算一次后缓存。"""
     global _M, _M_inv, _src_pts
@@ -57,7 +68,14 @@ def _sliding_window_fit(binary_warped: np.ndarray):
     """滑动窗口寻找左右车道并二次拟合。"""
     global _prev_left_fit, _prev_right_fit
     h, w = binary_warped.shape
-    histogram = np.sum(binary_warped[h // 2:, :], axis=0)
+
+    # 只看图像下半区，且聚焦中间 80% 区域，避免旁车道/墙角干扰
+    hist_region = binary_warped[h // 2:, :].copy()
+    edge_margin = int(w * 0.1)
+    hist_region[:, :edge_margin] = 0
+    hist_region[:, w - edge_margin:] = 0
+    histogram = np.sum(hist_region, axis=0)
+
     midpoint = int(w // 2)
     leftx_base = int(np.argmax(histogram[:midpoint]))
     rightx_base = int(np.argmax(histogram[midpoint:]) + midpoint)
@@ -71,8 +89,31 @@ def _sliding_window_fit(binary_warped: np.ndarray):
     nonzeroy = np.array(nonzero[0])
     nonzerox = np.array(nonzero[1])
 
+    # 期望车道宽度限制，防止抓到旁边车道
+    lane_width_min = int(w * 0.25)
+    lane_width_max = int(w * 0.7)
+    if (rightx_base - leftx_base) < lane_width_min or (rightx_base - leftx_base) > lane_width_max:
+        # 若宽度异常，使用上一帧中心或默认中心对称
+        if len(_prev_left_fit) and len(_prev_right_fit):
+            base_y = h - 1
+            leftx_base = int(_poly_points(_prev_left_fit, base_y))
+            rightx_base = int(_poly_points(_prev_right_fit, base_y))
+        else:
+            offset = int(w * 0.18)
+            leftx_base = midpoint - offset
+            rightx_base = midpoint + offset
+
     leftx_current = leftx_base
     rightx_current = rightx_base
+
+    # 若有上一帧拟合，限制窗口初始位置的漂移
+    if len(_prev_left_fit) and len(_prev_right_fit):
+        base_y = h - 1
+        prev_left = int(_poly_points(_prev_left_fit, base_y))
+        prev_right = int(_poly_points(_prev_right_fit, base_y))
+        drift = int(w * 0.15)
+        leftx_current = int(np.clip(leftx_current, prev_left - drift, prev_left + drift))
+        rightx_current = int(np.clip(rightx_current, prev_right - drift, prev_right + drift))
 
     left_lane_inds = []
     right_lane_inds = []
