@@ -21,6 +21,8 @@ from .speed_pid import SpeedPIDController
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG_PATH = ROOT / "config" / "defaults.json"
+LAST_CONFIG_PATH = ROOT / "config" / "last.json"
+LAST_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 DEFAULT_PARAMS: Dict[str, Any] = {
     # 视觉参数
@@ -116,16 +118,33 @@ PARAM_TYPES: Dict[str, str] = {
 
 
 def _load_params_from_file(base: Dict[str, Any]) -> Dict[str, Any]:
-    if DEFAULT_CONFIG_PATH.exists():
-        try:
-            with open(DEFAULT_CONFIG_PATH, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            if isinstance(data, dict):
-                for k, v in data.items():
-                    base[k] = v
-        except Exception:
-            pass
+    for path in (DEFAULT_CONFIG_PATH, LAST_CONFIG_PATH):
+        if path.exists():
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, dict):
+                    for k, v in data.items():
+                        base[k] = v
+            except Exception:
+                pass
     return base
+
+
+def _save_params(path: Path, data: Dict[str, Any]):
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
+def save_params(snapshot: Dict[str, Any] = None, path: Path = None):
+    """Persist parameters to config/last.json (default)."""
+    target = path or LAST_CONFIG_PATH
+    data = snapshot if snapshot is not None else params
+    _save_params(target, data)
 
 
 # 共享参数（网页可调）

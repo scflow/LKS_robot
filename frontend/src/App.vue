@@ -18,6 +18,8 @@ const streamSrc = ref('/stream/raw')
 const selectedStream = ref('raw')
 const errCanvas = ref<HTMLCanvasElement | null>(null)
 const speedCanvas = ref<HTMLCanvasElement | null>(null)
+const overlayCanvas = ref<HTMLCanvasElement | null>(null)
+const streamImg = ref<HTMLImageElement | null>(null)
 const errHistory = ref<number[]>([])
 const speedHistory = ref<number[]>([])
 const maxPoints = 120
@@ -114,6 +116,7 @@ const handleStreamError = () => {
 
 const handleStreamLoad = () => {
   streamError.value = false
+  resizeOverlay()
 }
 
 const restartStream = () => {
@@ -126,13 +129,84 @@ const dismissOverlay = () => {
   overlayDismissed.value = true
 }
 
+const resizeOverlay = () => {
+  if (!streamImg.value || !overlayCanvas.value) return
+  overlayCanvas.value.width = streamImg.value.clientWidth || streamImg.value.naturalWidth || 0
+  overlayCanvas.value.height = streamImg.value.clientHeight || streamImg.value.naturalHeight || 0
+}
+
+const drawOverlay = () => {
+  const canvas = overlayCanvas.value
+  const overlay = statusRef.value.overlay
+  if (!canvas || !overlay || !overlay.frame) return
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+  resizeOverlay()
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+  const frame = overlay.frame || { w: canvas.width, h: canvas.height }
+  const fw = frame.w || canvas.width
+  const fh = frame.h || canvas.height
+  const sx = fw ? canvas.width / fw : 1
+  const sy = fh ? canvas.height / fh : 1
+
+  // ROI
+  const roi = overlay.roi || []
+  if (roi.length >= 3) {
+    ctx.strokeStyle = 'rgba(0, 255, 255, 0.6)'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    roi.forEach((p: any, idx: number) => {
+      if (!p || typeof p[0] !== 'number' || typeof p[1] !== 'number') return
+      const x = p[0] * sx
+      const y = p[1] * sy
+      if (idx === 0) ctx.moveTo(x, y)
+      else ctx.lineTo(x, y)
+    })
+    ctx.closePath()
+    ctx.stroke()
+  }
+
+  // Curves (smooth polyline)
+  const curves = overlay.curves || {}
+  const drawCurve = (pts: any[], color: string) => {
+    if (!pts || pts.length < 2) return
+    ctx.beginPath()
+    ctx.strokeStyle = color
+    ctx.lineWidth = 3
+    pts.forEach((p: any, idx: number) => {
+      if (!p || typeof p[0] !== 'number' || typeof p[1] !== 'number') return
+      const x = p[0] * sx
+      const y = p[1] * sy
+      if (idx === 0) ctx.moveTo(x, y)
+      else ctx.lineTo(x, y)
+    })
+    ctx.stroke()
+  }
+  drawCurve(curves.left || [], 'rgba(0,150,255,0.9)')
+  drawCurve(curves.right || [], 'rgba(255,80,80,0.9)')
+
+  // Lane lines
+  const lines = overlay.lines || []
+  if (lines.length) {
+    ctx.strokeStyle = 'rgba(80, 160, 255, 0.9)'
+    ctx.lineWidth = 3
+    lines.forEach((ln: any) => {
+      ctx.beginPath()
+      ctx.moveTo(ln.x1 * sx, ln.y1 * sy)
+      ctx.lineTo(ln.x2 * sx, ln.y2 * sy)
+      ctx.stroke()
+    })
+  }
+}
+
 watch(
-  () => ({ err: statusRef.value.err, motor: statusRef.value.motor_duty }),
+  () => ({ err: statusRef.value.err, motor: statusRef.value.motor_duty, overlay: statusRef.value.overlay }),
   ({ err, motor }) => {
     pushHistory(errHistory.value, err)
     pushHistory(speedHistory.value, motor)
     drawSparkline(errCanvas.value, errHistory.value, { min: -40, max: 40, color: '#00c7be' })
     drawSparkline(speedCanvas.value, speedHistory.value, { min: 0, max: 0.2, color: '#ff9f0a' })
+    drawOverlay()
   }
 )
 
@@ -159,8 +233,8 @@ onUnmounted(() => {
         </div>
         <div class="video-wrap">
           <DynamicIsland :err="statusRef.err" />
-          <img id="streamImage" :src="streamSrc" alt="stream" @error="handleStreamError" @load="handleStreamLoad" />
-          <canvas id="overlay" class="overlay-canvas"></canvas>
+          <img id="streamImage" ref="streamImg" :src="streamSrc" alt="stream" @error="handleStreamError" @load="handleStreamLoad" />
+          <canvas id="overlay" ref="overlayCanvas" class="overlay-canvas"></canvas>
           <div class="video-fallback" v-if="showCameraLost">
             <div class="fallback-icon">⚠</div>
             <div class="fallback-text">{{ statusRef.camera_error || 'VIDEO SIGNAL LOST' }}</div>

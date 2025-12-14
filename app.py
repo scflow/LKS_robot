@@ -2,7 +2,7 @@ from flask import Flask, Response, jsonify, request, send_from_directory
 
 from camera import mjpeg_stream, start_camera_thread
 from chassis import CENTER_POSITION
-from control import PARAM_TYPES, latest_overlay, latest_status, lock, params
+from control import PARAM_TYPES, latest_overlay, latest_status, lock, params, save_params
 
 app = Flask(__name__)
 
@@ -70,6 +70,7 @@ def set_params():
             except Exception:
                 pass
 
+    save_params()
     return jsonify({"ok": True, "changed": changed, "params": params})
 
 
@@ -88,6 +89,7 @@ def estop():
         params["auto_drive"] = 0
         params["manual_motor"] = 0.0
         params["manual_servo"] = CENTER_POSITION
+    save_params()
     return jsonify({"ok": True, "auto_drive": 0, "manual_motor": 0.0, "manual_servo": CENTER_POSITION})
 
 

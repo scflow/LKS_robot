@@ -4,256 +4,210 @@ from typing import Any, Dict, Tuple
 import cv2 as cv
 import numpy as np
 
-# ROI 顶点缓存，随输入尺寸更新
-vertices = np.array([[(0, 0), (0, 0), (0, 0), (0, 0)]], dtype=np.int32)
-_last_err = 0.0
-_last_segments = []
-_last_ts = None
+# 透视矩阵缓存
+_M = None
+_M_inv = None
+_src_pts = None
+
+# 上一帧拟合系数
+_prev_left_fit: Tuple[float, float, float] = ()
+_prev_right_fit: Tuple[float, float, float] = ()
+
+# 误差简单滤波
+_filter_val = 0.0
 
 
-class OneEuroFilter:
-    """一欧元滤波器，用于对误差做强平滑。"""
-    def __init__(self, min_cutoff=0.5, beta=0.003, d_cutoff=1.0):
-        self.min_cutoff = float(min_cutoff)
-        self.beta = float(beta)
-        self.d_cutoff = float(d_cutoff)
-        self.x_prev = None
-        self.dx_prev = None
-        self.t_prev = None
-
-    @staticmethod
-    def _alpha(cutoff, dt):
-        tau = 1.0 / (2 * np.pi * cutoff)
-        return 1.0 / (1.0 + tau / dt) if dt > 0 else 1.0
-
-    def __call__(self, x, t):
-        if self.t_prev is None:
-            self.t_prev = t
-            self.x_prev = x
-            self.dx_prev = 0.0
-            return x
-
-        dt = max(t - self.t_prev, 1e-6)
-        dx = (x - self.x_prev) / dt
-        alpha_d = self._alpha(self.d_cutoff, dt)
-        dx_hat = alpha_d * dx + (1 - alpha_d) * self.dx_prev
-
-        cutoff = self.min_cutoff + self.beta * abs(dx_hat)
-        alpha = self._alpha(cutoff, dt)
-        x_hat = alpha * x + (1 - alpha) * self.x_prev
-
-        self.x_prev = x_hat
-        self.dx_prev = dx_hat
-        self.t_prev = t
-        return float(x_hat)
+def _get_perspective_matrices(w: int, h: int):
+    """计算鸟瞰变换矩阵，只算一次后缓存。"""
+    global _M, _M_inv, _src_pts
+    if _M is None or _M_inv is None or _src_pts is None:
+        src = np.float32([
+            [w * 0.1, h],
+            [w * 0.9, h],
+            [w * 0.4, h * 0.6],
+            [w * 0.6, h * 0.6],
+        ])
+        dst = np.float32([
+            [w * 0.2, h],
+            [w * 0.8, h],
+            [w * 0.2, 0],
+            [w * 0.8, 0],
+        ])
+        _M = cv.getPerspectiveTransform(src, dst)
+        _M_inv = cv.getPerspectiveTransform(dst, src)
+        _src_pts = src
+    return _M, _M_inv, _src_pts
 
 
-_err_filter = OneEuroFilter(min_cutoff=0.6, beta=0.003, d_cutoff=1.0)
-
-
-def grayscale(image_bgr: np.ndarray) -> np.ndarray:
-    return cv.cvtColor(image_bgr, cv.COLOR_BGR2GRAY)
-
-
-def gaussian_blur(gray: np.ndarray) -> np.ndarray:
-    return cv.GaussianBlur(gray, (3, 3), 0)
-
-
-def canny(gray_blur: np.ndarray, low_threshold: int) -> np.ndarray:
-    return cv.Canny(gray_blur, low_threshold, low_threshold * 3)
-
-
-def region_of_interest(image: np.ndarray, params: Dict[str, Any]):
-    global vertices
-    imshape = image.shape
-
-    roi_points = params.get("roi_points") or []
-    valid_roi = []
-    used_custom = False
-    try:
-        for p in roi_points:
-            if not isinstance(p, (list, tuple)) or len(p) != 2:
-                continue
-            x, y = float(p[0]), float(p[1])
-            # 支持 0~1 规范化坐标；如果传入像素值也允许使用
-            if 0.0 <= x <= 1.0 and 0.0 <= y <= 1.0:
-                px = int(x * imshape[1])
-                py = int(y * imshape[0])
-            else:
-                px = int(x)
-                py = int(y)
-            if 0 <= px < imshape[1] and 0 <= py < imshape[0]:
-                valid_roi.append((px, py))
-    except Exception:
-        valid_roi = []
-
-    if len(valid_roi) >= 3:
-        vertices = np.array([valid_roi], dtype=np.int32)
-        used_custom = True
+def _fast_binary(image_bgr: np.ndarray, thresh: int) -> np.ndarray:
+    """使用红通道 + Sobel X 提取垂直边缘并二值化。"""
+    if image_bgr.ndim == 3:
+        _, _, r = cv.split(image_bgr)
     else:
-        vertices = np.array([[
-            (10, imshape[0]),
-            (imshape[1] * 5 / 34, imshape[0] * 2 / 3),
-            (imshape[1] * 29 / 34, imshape[0] * 2 / 3),
-            (imshape[1] - 20, imshape[0])
-        ]], dtype=np.int32)
-        used_custom = False
-
-    mask = np.zeros_like(image)
-    ignore_mask_color = 255 if len(image.shape) == 2 else (255,) * image.shape[2]
-    cv.fillPoly(mask, vertices, ignore_mask_color)
-    return cv.bitwise_and(image, mask), mask, vertices, used_custom
+        r = image_bgr
+    sobelx = cv.Sobel(r, cv.CV_16S, 1, 0)
+    abs_sobelx = np.absolute(sobelx)
+    maxv = np.max(abs_sobelx) or 1
+    scaled = np.uint8(255 * abs_sobelx / maxv)
+    _, binary = cv.threshold(scaled, thresh, 255, cv.THRESH_BINARY)
+    return binary
 
 
-def hough_lines(edge_roi: np.ndarray, threshold: int, min_line_len: int, max_line_gap: int):
-    rho = 2
-    theta = np.pi / 180
-    return cv.HoughLinesP(edge_roi, rho, theta, threshold, np.array([]), min_line_len, max_line_gap)
+def _sliding_window_fit(binary_warped: np.ndarray):
+    """滑动窗口寻找左右车道并二次拟合。"""
+    global _prev_left_fit, _prev_right_fit
+    h, w = binary_warped.shape
+    histogram = np.sum(binary_warped[h // 2:, :], axis=0)
+    midpoint = int(w // 2)
+    leftx_base = int(np.argmax(histogram[:midpoint]))
+    rightx_base = int(np.argmax(histogram[midpoint:]) + midpoint)
+
+    nwindows = 6
+    window_height = int(h // nwindows)
+    margin = 40
+    minpix = 20
+
+    nonzero = binary_warped.nonzero()
+    nonzeroy = np.array(nonzero[0])
+    nonzerox = np.array(nonzero[1])
+
+    leftx_current = leftx_base
+    rightx_current = rightx_base
+
+    left_lane_inds = []
+    right_lane_inds = []
+
+    for window in range(nwindows):
+        win_y_low = h - (window + 1) * window_height
+        win_y_high = h - window * window_height
+        win_xleft_low = leftx_current - margin
+        win_xleft_high = leftx_current + margin
+        win_xright_low = rightx_current - margin
+        win_xright_high = rightx_current + margin
+
+        good_left_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) &
+                          (nonzerox >= win_xleft_low) & (nonzerox < win_xleft_high)).nonzero()[0]
+        good_right_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) &
+                           (nonzerox >= win_xright_low) & (nonzerox < win_xright_high)).nonzero()[0]
+
+        left_lane_inds.append(good_left_inds)
+        right_lane_inds.append(good_right_inds)
+
+        if len(good_left_inds) > minpix:
+            leftx_current = int(np.mean(nonzerox[good_left_inds]))
+        if len(good_right_inds) > minpix:
+            rightx_current = int(np.mean(nonzerox[good_right_inds]))
+
+    left_lane_inds = np.concatenate(left_lane_inds)
+    right_lane_inds = np.concatenate(right_lane_inds)
+
+    leftx = nonzerox[left_lane_inds]
+    lefty = nonzeroy[left_lane_inds]
+    rightx = nonzerox[right_lane_inds]
+    righty = nonzeroy[right_lane_inds]
+
+    left_fit = _prev_left_fit if len(_prev_left_fit) else None
+    right_fit = _prev_right_fit if len(_prev_right_fit) else None
+
+    if len(leftx) > 50:
+        left_fit = np.polyfit(lefty, leftx, 2)
+        _prev_left_fit = left_fit
+    if len(rightx) > 50:
+        right_fit = np.polyfit(righty, rightx, 2)
+        _prev_right_fit = right_fit
+
+    return left_fit, right_fit
 
 
-def bypass_angle_filter(lines):
-    low_thres = 20
-    high_thres = 80
-    filtered = []
-    if lines is None:
-        return filtered
-    for line in lines:
-        for x1, y1, x2, y2 in line:
-            if x1 == x2 or y1 == y2:
-                continue
-            angle = abs(np.arctan((y2 - y1) / (x2 - x1)) * 180 / np.pi)
-            if low_thres < angle < high_thres:
-                filtered.append([[x1, y1, x2, y2]])
-    return filtered
-
-
-def weighted_img(img: np.ndarray, initial_img: np.ndarray) -> np.ndarray:
-    return cv.addWeighted(initial_img, 0.8, img, 1.0, 0.0)
-
-
-def draw_lines(line_image: np.ndarray, lines, ref_shape):
-    global _last_err, _last_segments
-    right_y_set, right_x_set, right_slope_set, right_intercept_set = [], [], [], []
-    left_y_set, left_x_set, left_slope_set, left_intercept_set = [], [], [], []
-
-    h, w = ref_shape[:2]
-    middle_x = w // 2
-    max_y = h
-    top_y = int(h * 0.6)  # 60% 高度取中点
-
-    draw_segments = []
-
-    if not lines:
-        # 丢线时返回上次结果，否则给出默认直立车道
-        if _last_segments:
-            return _last_err, _last_segments
-        return 0.0, _default_segments(ref_shape)
-
-    for line in lines:
-        for x1, y1, x2, y2 in line:
-            fit = np.polyfit((x1, x2), (y1, y2), 1)
-            slope, intercept = fit[0], fit[1]
-            if slope > 0:
-                right_y_set += [y1, y2]
-                right_x_set += [x1, x2]
-                right_slope_set.append(slope)
-                right_intercept_set.append(intercept)
-            elif slope < 0:
-                left_y_set += [y1, y2]
-                left_x_set += [x1, x2]
-                left_slope_set.append(slope)
-                left_intercept_set.append(intercept)
-
-    right_x_err = 0.0
-    left_x_err = 0.0
-
-    if left_y_set:
-        lslope = float(np.median(left_slope_set))
-        lintercept = float(np.median(left_intercept_set))
-        left_x_bottom = int((max_y - lintercept) / lslope)
-        left_x_top = int((top_y - lintercept) / lslope)
-        left_x_err = (top_y - lintercept) / lslope
-        draw_segments.append({"x1": left_x_bottom, "y1": max_y, "x2": left_x_top, "y2": top_y})
-
-    if right_y_set:
-        rslope = float(np.median(right_slope_set))
-        rintercept = float(np.median(right_intercept_set))
-        right_x_bottom = int((max_y - rintercept) / rslope)
-        right_x_top = int((top_y - rintercept) / rslope)
-        right_x_err = (top_y - rintercept) / rslope
-        draw_segments.append({"x1": right_x_top, "y1": top_y, "x2": right_x_bottom, "y2": max_y})
-
-    if right_y_set and left_y_set:
-        miderr_x = (right_x_err + left_x_err) / 2.0
-        error = (middle_x) - miderr_x
-        error = max(min(error, 40), -40)
-    else:
-        if _last_segments:
-            return _last_err, _last_segments
-        error = 0.0
-        if not draw_segments:
-            draw_segments = _default_segments(ref_shape)
-
-    _last_err = float(error)
-    _last_segments = draw_segments
-    return float(error), draw_segments
-
-def _default_segments(shape):
-    h, w = shape[:2]
-    top_y = int(h * 0.6)
-    left_x_bottom = int(w * 0.35)
-    right_x_bottom = int(w * 0.65)
-    left_x_top = left_x_bottom
-    right_x_top = right_x_bottom
-    return [
-        {"x1": left_x_bottom, "y1": h, "x2": left_x_top, "y2": top_y},
-        {"x1": right_x_bottom, "y1": h, "x2": right_x_top, "y2": top_y},
-    ]
+def _poly_points(fit, y_vals):
+    return fit[0] * y_vals ** 2 + fit[1] * y_vals + fit[2]
 
 
 def process_image(frame_bgr: np.ndarray, params: Dict[str, Any]) -> Tuple[Dict[str, np.ndarray], float, Dict[str, Any]]:
-    low = int(params.get("canny_low_threshold", 68))
-    threshold = int(params.get("hof_threshold", 40))
-    min_line_len = int(params.get("hof_min_line_len", 20))
-    max_line_gap = int(params.get("hof_max_line_gap", 10))
+    """滑窗+鸟瞰+二次拟合的车道检测，输出多路图像和覆盖数据。"""
+    global _filter_val
+    h, w = frame_bgr.shape[:2]
+    thresh = int(params.get("binary_value", 40))
 
-    gray = grayscale(frame_bgr)
-    blur = gaussian_blur(gray)
-    edges = canny(blur, low)
-    roi, mask, roi_vertices, roi_custom = region_of_interest(edges, params)
-    lines = hough_lines(roi, threshold, min_line_len, max_line_gap)
-    filtered = bypass_angle_filter(lines)
+    # 1) 快速二值
+    binary = _fast_binary(frame_bgr, thresh)
 
-    line_image = np.zeros_like(frame_bgr)
-    err_raw, draw_segments = draw_lines(line_image, filtered, frame_bgr.shape)
-    now = time.time()
-    err = _err_filter(err_raw, now)
-    mask_bgr = cv.cvtColor(mask, cv.COLOR_GRAY2BGR)
-    processed = cv.bitwise_and(frame_bgr, mask_bgr)  # 只展示 ROI 内部区域
+    # 2) 透视变换成鸟瞰
+    M, M_inv, src_pts = _get_perspective_matrices(w, h)
+    warped = cv.warpPerspective(binary, M, (w, h), flags=cv.INTER_LINEAR)
 
-    gray_bgr = cv.cvtColor(gray, cv.COLOR_GRAY2BGR)
-    blur_bgr = cv.cvtColor(blur, cv.COLOR_GRAY2BGR)
-    edges_bgr = cv.cvtColor(edges, cv.COLOR_GRAY2BGR)
-    roi_bgr = cv.cvtColor(roi, cv.COLOR_GRAY2BGR)
+    # 3) 滑动窗口 + 拟合
+    left_fit, right_fit = _sliding_window_fit(warped)
+    if left_fit is None:
+        left_fit = _prev_left_fit if len(_prev_left_fit) else [0, 0, w * 0.35]
+    if right_fit is None:
+        right_fit = _prev_right_fit if len(_prev_right_fit) else [0, 0, w * 0.65]
 
-    return {
+    ploty = np.linspace(0, h - 1, h)
+    left_fitx = _poly_points(left_fit, ploty)
+    right_fitx = _poly_points(right_fit, ploty)
+
+    # 4) 误差（底部往上一点）
+    eval_y = h - 20
+    lane_center = (_poly_points(left_fit, eval_y) + _poly_points(right_fit, eval_y)) / 2.0
+    screen_center = w / 2.0
+    err_raw = screen_center - lane_center
+    alpha = 0.3
+    _filter_val = _filter_val * (1 - alpha) + err_raw * alpha
+    err = float(np.clip(_filter_val, -120, 120))
+
+    # 5) 鸟瞰可视化
+    warp_zero = np.zeros_like(warped).astype(np.uint8)
+    color_warp = np.dstack((warp_zero, warp_zero, warp_zero))
+    pts_left = np.array([np.transpose(np.vstack([left_fitx, ploty]))])
+    pts_right = np.array([np.flipud(np.transpose(np.vstack([right_fitx, ploty])))])
+    pts = np.hstack((pts_left, pts_right))
+    cv.fillPoly(color_warp, np.int_([pts]), (0, 255, 0))
+    cv.polylines(color_warp, np.int_([pts_left]), False, (0, 0, 255), 4)
+    cv.polylines(color_warp, np.int_([pts_right]), False, (255, 0, 0), 4)
+    processed_bird = cv.addWeighted(np.dstack([warped, warped, warped]), 1, color_warp, 0.3, 0)
+
+    # 6) 反投影到原图坐标用于前端覆盖
+    sample_y = np.linspace(h * 0.3, h, num=12)
+    left_pts = np.vstack([_poly_points(left_fit, sample_y), sample_y]).T.reshape(-1, 1, 2)
+    right_pts = np.vstack([_poly_points(right_fit, sample_y), sample_y]).T.reshape(-1, 1, 2)
+    left_unwarp = cv.perspectiveTransform(left_pts.astype(np.float32), M_inv)
+    right_unwarp = cv.perspectiveTransform(right_pts.astype(np.float32), M_inv)
+
+    def _segments_from_poly(unwarped_pts):
+        segs = []
+        pts = unwarped_pts.reshape(-1, 2)
+        for i in range(len(pts) - 1):
+            x1, y1 = pts[i]
+            x2, y2 = pts[i + 1]
+            segs.append({"x1": int(x1), "y1": int(y1), "x2": int(x2), "y2": int(y2)})
+        return segs
+
+    line_segments = _segments_from_poly(left_unwarp) + _segments_from_poly(right_unwarp)
+
+    # 输出帧
+    gray_bgr = cv.cvtColor(binary, cv.COLOR_GRAY2BGR)
+    warped_bgr = cv.cvtColor(warped, cv.COLOR_GRAY2BGR)
+
+    imgs = {
         "raw": frame_bgr,
         "gray": gray_bgr,
-        "blur": blur_bgr,
-        "canny": edges_bgr,
-        "roi": roi_bgr,
-        "processed": processed,
-    }, err, {
-        "roi": [[int(p[0]), int(p[1])] for p in (roi_vertices.tolist()[0] if len(roi_vertices) > 0 else [])],
-        "lines": [
-            {
-                "x1": int(seg["x1"]),
-                "y1": int(seg["y1"]),
-                "x2": int(seg["x2"]),
-                "y2": int(seg["y2"]),
-            } for seg in draw_segments
-        ],
-        "frame": {"w": int(frame_bgr.shape[1]), "h": int(frame_bgr.shape[0])},
-        "err": float(err),
-        "roi_source": "custom" if roi_custom else "default",
+        "blur": gray_bgr,
+        "canny": gray_bgr,
+        "roi": warped_bgr,          # ROI 视角：鸟瞰二值
+        "processed": processed_bird  # Processed：带拟合的鸟瞰
     }
+
+    overlay = {
+        "roi": [[int(p[0]), int(p[1])] for p in _src_pts.tolist()],
+        "lines": line_segments,
+        "curves": {
+            "left": [[int(p[0]), int(p[1])] for p in left_unwarp.reshape(-1, 2).tolist()],
+            "right": [[int(p[0]), int(p[1])] for p in right_unwarp.reshape(-1, 2).tolist()],
+        },
+        "frame": {"w": int(w), "h": int(h)},
+        "err": float(err),
+        "roi_source": "birdview",
+    }
+
+    return imgs, err, overlay
