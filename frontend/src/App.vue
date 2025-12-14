@@ -163,29 +163,14 @@ const drawOverlay = () => {
   const sy = fh ? canvas.height / fh : 1
 
   // ROI
-  const roi = overlay.roi || []
-  if (roi.length >= 3) {
-    ctx.strokeStyle = 'rgba(0, 255, 255, 0.6)'
-    ctx.lineWidth = 2
-    ctx.beginPath()
-    roi.forEach((p: any, idx: number) => {
-      if (!p || typeof p[0] !== 'number' || typeof p[1] !== 'number') return
-      const x = p[0] * sx
-      const y = p[1] * sy
-      if (idx === 0) ctx.moveTo(x, y)
-      else ctx.lineTo(x, y)
-    })
-    ctx.closePath()
-    ctx.stroke()
-  }
-
   // Curves (smooth polyline)
   const curves = overlay.curves || {}
   const drawCurve = (pts: any[], color: string) => {
     if (!pts || pts.length < 2) return
     ctx.beginPath()
     ctx.strokeStyle = color
-    ctx.lineWidth = 3
+    ctx.lineWidth = 5
+    ctx.lineCap = 'round'
     pts.forEach((p: any, idx: number) => {
       if (!p || typeof p[0] !== 'number' || typeof p[1] !== 'number') return
       const x = p[0] * sx

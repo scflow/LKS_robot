@@ -61,6 +61,10 @@ def _fast_binary(image_bgr: np.ndarray, thresh: int) -> np.ndarray:
     maxv = np.max(abs_sobelx) or 1
     scaled = np.uint8(255 * abs_sobelx / maxv)
     _, binary = cv.threshold(scaled, thresh, 255, cv.THRESH_BINARY)
+    # 形态学去噪：先闭运算连接断点，再开运算去掉孤立噪点
+    kernel = np.ones((3, 3), np.uint8)
+    binary = cv.morphologyEx(binary, cv.MORPH_CLOSE, kernel, iterations=1)
+    binary = cv.morphologyEx(binary, cv.MORPH_OPEN, kernel, iterations=1)
     return binary
 
 
@@ -241,7 +245,7 @@ def process_image(frame_bgr: np.ndarray, params: Dict[str, Any]) -> Tuple[Dict[s
 
     overlay = {
         "roi": [[int(p[0]), int(p[1])] for p in _src_pts.tolist()],
-        "lines": line_segments,
+        "lines": [],  # 不再传直线段，前端专注曲线
         "curves": {
             "left": [[int(p[0]), int(p[1])] for p in left_unwarp.reshape(-1, 2).tolist()],
             "right": [[int(p[0]), int(p[1])] for p in right_unwarp.reshape(-1, 2).tolist()],
