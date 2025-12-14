@@ -1,0 +1,66 @@
+:root {
+  --bg: #0e1117;
+  --card: #151a22;
+  --card-strong: #0b1017;
+  --border: #1f2733;
+  --accent: #3ac8b6;
+  --accent-2: #4c8df6;
+  --text: #e9edf5;
+  --sub: #a5b1c7;
+  --danger: #f45b69;
+  --radius: 14px;
+  --shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 0;
+  background: radial-gradient(circle at 20% 20%, rgba(58, 200, 182, 0.08), transparent 32%),
+  radial-gradient(circle at 80% 10%, rgba(76, 141, 246, 0.08), transparent 30%),
+  var(--bg);
+  color: var(--text);
+  font-family: "Space Grotesk", "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+  min-height: 100vh;
+  line-height: 1.5;
+}
+
+.shell { max-width: 1220px; margin: 0 auto; padding: 20px 16px 48px; }
+header { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 14px; }
+.logo { font-weight: 700; letter-spacing: 0.5px; font-size: 18px; display:flex; align-items:center; gap:10px;}
+.pill { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius: 999px; border:1px solid var(--border); background: rgba(255,255,255,0.03); color: var(--sub); font-size: 12px;}
+.pill strong { color: var(--text); font-weight: 600; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow); }
+.card h3 { margin: 0 0 10px; font-size: 16px; font-weight: 700; letter-spacing: 0.2px; }
+.video-wrap { position: relative; overflow: hidden; border-radius: var(--radius); background: #000; border:1px solid var(--border); }
+.video-wrap img { width: 100%; display: block; object-fit: cover; }
+.video-header { display:flex; align-items:center; justify-content: space-between; gap:10px; margin-bottom: 10px; }
+.select { background: var(--card-strong); color: var(--text); border:1px solid var(--border); border-radius: 10px; padding: 8px 10px; font-size: 14px; width: 100%; }
+.toolbar { display:flex; flex-wrap:wrap; gap:10px; }
+button { border:none; border-radius: 12px; padding: 10px 14px; color: var(--text); background: var(--accent-2); cursor: pointer; font-weight: 600; letter-spacing: 0.2px; transition: transform 0.15s ease, box-shadow 0.2s ease; box-shadow: 0 6px 20px rgba(76,141,246,0.35);}
+button.secondary { background: var(--card-strong); color: var(--text); border:1px solid var(--border); box-shadow:none; }
+button.ghost { background: transparent; border:1px solid var(--border); color: var(--text); box-shadow:none;}
+button.danger { background: var(--danger); box-shadow: 0 6px 20px rgba(244,91,105,0.35);}
+button:active { transform: translateY(1px); }
+.field { display:grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items:center; margin: 10px 0; }
+.field label { color: var(--sub); font-size: 13px; }
+.field input[type="range"] { width: 100%; }
+.field code { color: var(--accent); font-weight: 600; }
+.stack { display:flex; flex-direction:column; gap:8px; }
+.status-board { display:grid; grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); gap:8px; }
+.status-tile { background: var(--card-strong); border:1px solid var(--border); border-radius: 12px; padding: 10px; color: var(--sub); font-size: 13px; }
+.status-tile strong { color: var(--text); display:block; font-size: 16px; }
+.mono { font-family: "SFMono-Regular", Consolas, Menlo, monospace; }
+.sub { color: var(--sub); }
+.section { border-top: 1px solid var(--border); margin-top: 14px; padding-top: 10px; }
+.flex { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+.input-inline { display:flex; gap:8px; flex-wrap:wrap; }
+.input-inline input { background: var(--card-strong); border:1px solid var(--border); border-radius:10px; padding:8px 10px; color: var(--text); width: 120px; }
+.tag { display:inline-flex; padding:4px 8px; border-radius:10px; background: rgba(58,200,182,0.12); color: var(--accent); border:1px solid rgba(58,200,182,0.4); font-size: 12px; }
+
+@media (max-width: 700px) {
+  .field { grid-template-columns: 1fr; }
+  .video-header { flex-direction: column; align-items: flex-start; }
+}
