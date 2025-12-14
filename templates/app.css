@@ -36,6 +36,9 @@ header { display: flex; align-items: center; justify-content: space-between; gap
 .card h3 { margin: 0 0 10px; font-size: 16px; font-weight: 700; letter-spacing: 0.2px; }
 .video-wrap { position: relative; overflow: hidden; border-radius: var(--radius); background: #000; border:1px solid var(--border); }
 .video-wrap img { width: 100%; display: block; object-fit: cover; }
+.overlay-canvas { position:absolute; inset:0; pointer-events:none; }
+.overlay-canvas.editing { pointer-events:auto; cursor:crosshair; }
+.video-tools { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
 .video-header { display:flex; align-items:center; justify-content: space-between; gap:10px; margin-bottom: 10px; }
 .select { background: var(--card-strong); color: var(--text); border:1px solid var(--border); border-radius: 10px; padding: 8px 10px; font-size: 14px; width: 100%; }
 .toolbar { display:flex; flex-wrap:wrap; gap:10px; }

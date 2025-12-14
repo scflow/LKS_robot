@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>巡线 · 控制台</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div class="logo">
+        <span style="width:12px;height:12px;border-radius:50%;background:var(--accent);display:inline-block;"></span>
+        巡线 · 控制台
+      </div>
+      <div class="pill">适配 <strong>手机 / 平板 / 电脑</strong></div>
+    </header>
+
+    <div class="grid">
+      <div class="card">
+        <div class="video-header">
+          <h3>视频流</h3>
+          <select id="streamSelect" class="select">
+            <option value="raw" selected>Raw</option>
+            <option value="processed">Processed</option>
+            <option value="gray">Gray</option>
+            <option value="blur">Blur</option>
+            <option value="canny">Canny</option>
+            <option value="roi">ROI</option>
+          </select>
+        </div>
+        <div class="video-wrap">
+          <img id="streamImage" src="/stream/raw" alt="stream">
+          <canvas id="overlay" class="overlay-canvas"></canvas>
+        </div>
+        <div class="flex" style="margin-top:10px;">
+          <button id="btnEditROI" class="secondary">编辑 ROI</button>
+          <button id="btnClearROI" class="ghost">清除</button>
+          <span class="tag">ROI 顶点：<code id="roi_count" class="mono">0</code></span>
+          <button id="btnFullscreen" class="secondary" style="margin-left:auto;">全屏</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>状态</h3>
+        <div id="status" class="status-board"></div>
+        <div class="section">
+          <div class="flex">
+            <button id="btnToggle">切换：Auto</button>
+            <button id="btnEstop" class="danger">急停 (E-STOP)</button>
+            <span class="tag">auto_drive：<code id="auto_drive_val" class="mono"></code></span>
+          </div>
+          <input id="auto_drive" type="hidden" value="1">
+        </div>
+      </div>
+    </div>
+
+    <div class="grid" style="margin-top:14px;">
+      <div class="card">
+        <h3>视觉参数</h3>
+        <div class="stack">
+          <div class="field"><label>binary_value</label><div><input id="binary_value" type="range" min="0" max="255" step="1"><code id="binary_value_val"></code></div></div>
+          <div class="field"><label>canny_low_threshold</label><div><input id="canny_low_threshold" type="range" min="0" max="255" step="1"><code id="canny_low_threshold_val"></code></div></div>
+          <div class="field"><label>hof_threshold</label><div><input id="hof_threshold" type="range" min="0" max="255" step="1"><code id="hof_threshold_val"></code></div></div>
+          <div class="field"><label>hof_min_line_len</label><div><input id="hof_min_line_len" type="range" min="0" max="255" step="1"><code id="hof_min_line_len_val"></code></div></div>
+          <div class="field"><label>hof_max_line_gap</label><div><input id="hof_max_line_gap" type="range" min="0" max="255" step="1"><code id="hof_max_line_gap_val"></code></div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>自动控制参数</h3>
+        <div class="stack">
+          <div class="field"><label>steer_k</label><div><input id="steer_k" type="range" min="0" max="30" step="0.1"><code id="steer_k_val"></code></div></div>
+          <div class="field"><label>steer_invert (1 / -1)</label><div><input id="steer_invert" type="range" min="-1" max="1" step="2"><code id="steer_invert_val"></code></div></div>
+          <div class="field"><label>motor_base</label><div><input id="motor_base" type="range" min="0" max="0.2" step="0.01"><code id="motor_base_val"></code></div></div>
+          <div class="field"><label>motor_k</label><div><input id="motor_k" type="range" min="0" max="0.01" step="0.0005"><code id="motor_k_val"></code></div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>手动控制</h3>
+        <div class="stack">
+          <div class="field"><label>manual_motor (duty)</label><div><input id="manual_motor" type="range" min="-0.2" max="0.2" step="0.01"><code id="manual_motor_val"></code></div></div>
+          <div class="field"><label>manual_servo (pos)</label><div><input id="manual_servo" type="range" min="800" max="2200" step="1"><code id="manual_servo_val"></code></div></div>
+        </div>
+        <div class="section">
+          <div class="input-inline">
+            <label>速度(duty)</label>
+            <input id="manual_motor_input" type="number" step="0.01" min="-0.2" max="0.2" value="0.00">
+            <label>转角(servo)</label>
+            <input id="manual_servo_input" type="number" step="1" min="800" max="2200" value="1500">
+            <button id="btnApplyManual" class="secondary">应用并切换 Manual</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>底盘</h3>
+        <div class="stack">
+          <div class="field"><label>scs_mode</label><div><input id="scs_mode" type="range" min="0" max="2" step="1"><code id="scs_mode_val"></code></div></div>
+          <div class="field"><label>headlight</label><div><input id="headlight" type="range" min="0" max="1" step="1"><code id="headlight_val"></code></div></div>
+        </div>
+      </div>
+    </div>
+<script defer src="/app.js"></script>
+</body>
+</html>
