@@ -17,14 +17,9 @@
         车道保持 · 控制台
       </div>
       <div class="header-right">
-        <div class="theme-toggle" title="切换主题">
-          <button class="theme-btn" data-theme="light" aria-label="切换到白天模式">
-            <img src="/assets/light.svg" alt="light">
-          </button>
-          <button class="theme-btn" data-theme="dark" aria-label="切换到黑夜模式">
-            <img src="/assets/dark.svg" alt="dark">
-          </button>
-        </div>
+        <button class="theme-btn" id="themeToggle" title="切换主题" aria-label="切换主题">
+          <img id="themeIcon" src="/assets/dark.svg" alt="dark">
+        </button>
         <div class="status-chip" id="camChip" title="摄像头状态">
           <span class="status-dot" id="camDot"></span>
           <span id="camText">摄像头未连接</span>
@@ -46,6 +41,13 @@
           </select>
         </div>
         <div class="video-wrap">
+          <div class="error-island">
+            <span class="island-label">横向误差</span>
+            <div class="island-track">
+              <div class="island-dot" id="islandDot"></div>
+            </div>
+            <span class="island-value" id="islandValue">0.0</span>
+          </div>
           <img id="streamImage" src="/stream/raw" alt="stream">
           <canvas id="overlay" class="overlay-canvas"></canvas>
         </div>
@@ -54,6 +56,20 @@
           <button id="btnClearROI" class="ghost">清除</button>
           <span class="tag">ROI 顶点：<code id="roi_count" class="mono">0</code></span>
           <button id="btnFullscreen" class="secondary" style="margin-left:auto;">全屏</button>
+        </div>
+      </div>
+
+      <div class="card metrics-card">
+        <h3>实时曲线</h3>
+        <div class="metrics">
+          <div class="metric">
+            <div class="metric-title">横向误差</div>
+            <canvas id="errChart" width="320" height="120"></canvas>
+          </div>
+          <div class="metric">
+            <div class="metric-title">速度 (duty)</div>
+            <canvas id="speedChart" width="320" height="120"></canvas>
+          </div>
         </div>
       </div>
 
@@ -88,8 +104,33 @@
         <div class="stack">
           <div class="field"><label>steer_k</label><div><input id="steer_k" type="range" min="0" max="30" step="0.1"><code id="steer_k_val"></code></div></div>
           <div class="field"><label>steer_invert (1 / -1)</label><div><input id="steer_invert" type="range" min="-1" max="1" step="2"><code id="steer_invert_val"></code></div></div>
-          <div class="field"><label>motor_base</label><div><input id="motor_base" type="range" min="0" max="0.2" step="0.01"><code id="motor_base_val"></code></div></div>
-          <div class="field"><label>motor_k</label><div><input id="motor_k" type="range" min="0" max="0.01" step="0.0005"><code id="motor_k_val"></code></div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>速度控制</h3>
+        <div class="stack">
+          <div class="field">
+            <label>模式</label>
+            <div>
+              <select id="speed_mode" class="select">
+                <option value="0">线性降速</option>
+                <option value="1">PID 调速</option>
+              </select>
+            </div>
+          </div>
+          <div id="speed_linear" class="stack speed-group">
+            <div class="field"><label>motor_base</label><div><input id="motor_base" type="range" min="0" max="0.2" step="0.01"><code id="motor_base_val"></code></div></div>
+            <div class="field"><label>motor_k</label><div><input id="motor_k" type="range" min="0" max="0.01" step="0.0005"><code id="motor_k_val"></code></div></div>
+          </div>
+          <div id="speed_pid" class="stack speed-group">
+            <div class="field"><label>speed_target</label><div><input id="speed_target" type="range" min="0" max="0.2" step="0.005"><code id="speed_target_val"></code></div></div>
+            <div class="field"><label>speed_slowdown_gain</label><div><input id="speed_slowdown_gain" type="range" min="0" max="0.01" step="0.0005"><code id="speed_slowdown_gain_val"></code></div></div>
+            <div class="field"><label>speed_kp</label><div><input id="speed_kp" type="range" min="0" max="2" step="0.05"><code id="speed_kp_val"></code></div></div>
+            <div class="field"><label>speed_ki</label><div><input id="speed_ki" type="range" min="0" max="1" step="0.02"><code id="speed_ki_val"></code></div></div>
+            <div class="field"><label>speed_kd</label><div><input id="speed_kd" type="range" min="0" max="0.2" step="0.005"><code id="speed_kd_val"></code></div></div>
+            <div class="field"><label>speed_dt</label><div><input id="speed_dt" type="range" min="0.005" max="0.1" step="0.005"><code id="speed_dt_val"></code></div></div>
+          </div>
         </div>
       </div>
 

@@ -31,62 +31,68 @@ def camera_loop(camera_index=0, width=320, height=240):
     fps = 0.0
 
     while True:
-        ok, frame = cap.read()
-        if not ok or frame is None:
-            frame = np.zeros((height, width, 3), dtype=np.uint8)
-            with lock:
-                latest_status["camera_connected"] = False
-                latest_status["camera_error"] = "no frame"
-        else:
-            with lock:
-                latest_status["camera_connected"] = True
-                latest_status["camera_error"] = ""
-
-        with lock:
-            local_params: Dict = dict(params)
-
-        imgs, err, overlay = process_image(frame, local_params)
-        motor_duty, servo_pos, scs_mode, headlight, mode = compute_control(err)
-
-        if not chassis.is_open():
-            if chassis.open():
+        try:
+            ok, frame = cap.read()
+            if not ok or frame is None:
+                frame = np.zeros((height, width, 3), dtype=np.uint8)
                 with lock:
-                    latest_status["chassis_connected"] = True
-                    latest_status["chassis_error"] = ""
+                    latest_status["camera_connected"] = False
+                    latest_status["camera_error"] = "no frame"
             else:
-                motor_duty = 0.0
                 with lock:
-                    latest_status["chassis_connected"] = False
-                    latest_status["chassis_error"] = f"open {CHASSIS_PORT} failed: {chassis.last_error}"
+                    latest_status["camera_connected"] = True
+                    latest_status["camera_error"] = ""
 
-        if chassis.is_open():
-            try:
-                chassis.send(motor_duty, servo_pos, scs_mode, headlight)
-                with lock:
-                    latest_status["chassis_connected"] = True
-                    latest_status["chassis_error"] = ""
-            except Exception as e:
-                with lock:
-                    latest_status["chassis_connected"] = False
-                    latest_status["chassis_error"] = str(e)
+            with lock:
+                local_params: Dict = dict(params)
 
-        frames_in_window += 1
-        now = time.time()
-        dt = now - last_t
-        if dt >= 0.5:
-            fps = frames_in_window / dt
-            frames_in_window = 0
-            last_t = now
+            imgs, err, overlay = process_image(frame, local_params)
+            motor_duty, servo_pos, scs_mode, headlight, mode = compute_control(err)
 
-        with lock:
-            latest_frames.update(imgs)
-            latest_status["fps"] = float(fps)
-            latest_status["err"] = float(err)
-            latest_status["servo_position"] = int(servo_pos)
-            latest_status["motor_duty"] = float(motor_duty)
-            latest_status["mode"] = mode
-            latest_overlay.update(overlay)
+            if not chassis.is_open():
+                if chassis.open():
+                    with lock:
+                        latest_status["chassis_connected"] = True
+                        latest_status["chassis_error"] = ""
+                else:
+                    motor_duty = 0.0
+                    with lock:
+                        latest_status["chassis_connected"] = False
+                        latest_status["chassis_error"] = f"open {CHASSIS_PORT} failed: {chassis.last_error}"
 
+            if chassis.is_open():
+                try:
+                    chassis.send(motor_duty, servo_pos, scs_mode, headlight)
+                    with lock:
+                        latest_status["chassis_connected"] = True
+                        latest_status["chassis_error"] = ""
+                except Exception as e:
+                    with lock:
+                        latest_status["chassis_connected"] = False
+                        latest_status["chassis_error"] = str(e)
+
+            frames_in_window += 1
+            now = time.time()
+            dt = now - last_t
+            if dt >= 0.5:
+                fps = frames_in_window / dt
+                frames_in_window = 0
+                last_t = now
+
+            with lock:
+                latest_frames.update(imgs)
+                latest_status["fps"] = float(fps)
+                latest_status["err"] = float(err)
+                latest_status["servo_position"] = int(servo_pos)
+                latest_status["motor_duty"] = float(motor_duty)
+                latest_status["mode"] = mode
+                latest_overlay.update(overlay)
+
+        except Exception as e:
+            with lock:
+                latest_status["camera_error"] = str(e)
+                latest_status["camera_connected"] = False
+            time.sleep(0.05)
         time.sleep(0.01)
 
 

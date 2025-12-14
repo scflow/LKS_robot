@@ -92,5 +92,10 @@ def estop():
 
 
 if __name__ == "__main__":
-    start_camera_thread()
+    try:
+        start_camera_thread()
+    except Exception as e:
+        with lock:
+            latest_status["camera_connected"] = False
+            latest_status["camera_error"] = str(e)
     app.run(host="0.0.0.0", port=5001, debug=False, threaded=True)

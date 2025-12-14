@@ -1,6 +1,8 @@
 const keys = [
   "binary_value","canny_low_threshold","hof_threshold","hof_min_line_len","hof_max_line_gap",
-  "auto_drive","steer_k","steer_invert","motor_base","motor_k",
+  "auto_drive","steer_k","steer_invert",
+  "speed_mode","motor_base","motor_k",
+  "speed_target","speed_slowdown_gain","speed_kp","speed_ki","speed_kd","speed_dt",
   "manual_motor","manual_servo","scs_mode","headlight"
 ];
 
@@ -37,7 +39,17 @@ const ui = (() => {
   let camDot;
   let camText;
   let camChip;
-  let themeButtons = [];
+  let themeBtn;
+  let themeIcon;
+  let speedLinear;
+  let speedPid;
+  let islandDot;
+  let islandValue;
+  let errChart;
+  let speedChart;
+  const errHistory = [];
+  const speedHistory = [];
+  const MAX_POINTS = 120;
 
   function setVal(id, v) {
     const el = document.getElementById(id);
@@ -134,22 +146,78 @@ const ui = (() => {
     if (camChip) camChip.title = status.camera_error || "";
   }
 
+  function updateSpeedModeUI(modeVal) {
+    const isPid = parseInt(modeVal, 10) === 1;
+    if (speedLinear) speedLinear.style.display = isPid ? "none" : "flex";
+    if (speedPid) speedPid.style.display = isPid ? "flex" : "none";
+  }
+
+  function updateIsland(errVal) {
+    if (!islandDot || !islandValue) return;
+    const e = Number(errVal) || 0;
+    islandValue.textContent = e.toFixed(1);
+    // -40~40 映射到轨道宽度（160px），留 80% 区间
+    const clamped = Math.max(-40, Math.min(40, e));
+    const ratio = clamped / 40; // -1..1
+    const maxShift = 70; // px
+    islandDot.style.transform = `translate(${ratio * maxShift}px, -50%)`;
+  }
+
+  function pushHistory(arr, val) {
+    arr.push({ t: Date.now(), v: val });
+    if (arr.length > MAX_POINTS) arr.shift();
+  }
+
+  function drawSparkline(canvas, data, opts = {}) {
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    if (!data.length) return;
+    const values = data.map(d => d.v);
+    const min = opts.min ?? Math.min(...values);
+    const max = opts.max ?? Math.max(...values);
+    const range = max - min || 1;
+    const step = data.length > 1 ? w / (data.length - 1) : w;
+
+    ctx.strokeStyle = "rgba(76,141,246,0.85)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    data.forEach((d, i) => {
+      const x = i * step;
+      const y = h - ((d.v - min) / range) * h;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  }
+
   function applyTheme(theme) {
     const t = theme === "light" ? "light" : "dark";
     document.documentElement.setAttribute("data-theme", t);
     localStorage.setItem("theme", t);
-    themeButtons.forEach(btn => {
-      btn.classList.toggle("active", btn.dataset.theme === t);
-    });
+    if (themeBtn) {
+      themeBtn.classList.toggle("active", true);
+      if (themeIcon) {
+        const nextIcon = t === "light" ? "/assets/light.svg" : "/assets/dark.svg";
+        themeIcon.src = nextIcon;
+        themeIcon.alt = t;
+      }
+      themeBtn.dataset.theme = t;
+    }
   }
 
   function bindThemeToggle() {
-    themeButtons = Array.from(document.querySelectorAll(".theme-btn"));
-    themeButtons.forEach(btn => {
-      btn.addEventListener("click", () => {
-        applyTheme(btn.dataset.theme || "dark");
+    themeBtn = document.getElementById("themeToggle");
+    themeIcon = document.getElementById("themeIcon");
+    if (themeBtn) {
+      themeBtn.addEventListener("click", () => {
+        const current = document.documentElement.getAttribute("data-theme") || "dark";
+        const next = current === "dark" ? "light" : "dark";
+        applyTheme(next);
       });
-    });
+    }
     const saved = localStorage.getItem("theme") || "dark";
     applyTheme(saved);
   }
@@ -168,6 +236,7 @@ const ui = (() => {
 
       payload["auto_drive"] = parseInt(payload["auto_drive"], 10);
       payload["steer_invert"] = parseInt(payload["steer_invert"], 10);
+      payload["speed_mode"] = parseInt(payload["speed_mode"], 10);
       payload["hof_threshold"] = parseInt(payload["hof_threshold"], 10);
       payload["hof_min_line_len"] = parseInt(payload["hof_min_line_len"], 10);
       payload["hof_max_line_gap"] = parseInt(payload["hof_max_line_gap"], 10);
@@ -180,6 +249,12 @@ const ui = (() => {
       payload["steer_k"] = parseFloat(payload["steer_k"]);
       payload["motor_base"] = parseFloat(payload["motor_base"]);
       payload["motor_k"] = parseFloat(payload["motor_k"]);
+      payload["speed_target"] = parseFloat(payload["speed_target"]);
+      payload["speed_slowdown_gain"] = parseFloat(payload["speed_slowdown_gain"]);
+      payload["speed_kp"] = parseFloat(payload["speed_kp"]);
+      payload["speed_ki"] = parseFloat(payload["speed_ki"]);
+      payload["speed_kd"] = parseFloat(payload["speed_kd"]);
+      payload["speed_dt"] = parseFloat(payload["speed_dt"]);
       payload["manual_motor"] = parseFloat(payload["manual_motor"]);
 
       if (roiPoints.length >= 3) {
@@ -197,6 +272,7 @@ const ui = (() => {
     const data = await api.loadParams();
     keys.forEach(k => setVal(k, data[k]));
     updateToggleBtn(data["auto_drive"]);
+    updateSpeedModeUI(data["speed_mode"]);
     document.getElementById("manual_motor_input").value = Number(data["manual_motor"]).toFixed(2);
     document.getElementById("manual_servo_input").value = parseInt(data["manual_servo"], 10);
 
@@ -215,6 +291,7 @@ const ui = (() => {
       el.addEventListener("input", () => {
         if (out) out.textContent = el.value;
         if (k === "auto_drive") updateToggleBtn(parseInt(el.value,10));
+        if (k === "speed_mode") updateSpeedModeUI(el.value);
         schedulePost();
       });
     });
@@ -331,6 +408,11 @@ const ui = (() => {
       document.getElementById("status").innerHTML = view;
       backendOverlay = s.overlay || null;
       updateCameraIndicator(s);
+      updateIsland(s.err || 0);
+      pushHistory(errHistory, Number(s.err) || 0);
+      pushHistory(speedHistory, Number(s.motor_duty) || 0);
+      drawSparkline(errChart, errHistory, { min: -40, max: 40 });
+      drawSparkline(speedChart, speedHistory, { min: 0, max: 0.2 });
       resizeCanvas();
       drawOverlay();
     } catch (e) {}
@@ -345,6 +427,12 @@ const ui = (() => {
     camDot = document.getElementById("camDot");
     camText = document.getElementById("camText");
     camChip = document.getElementById("camChip");
+    speedLinear = document.getElementById("speed_linear");
+    speedPid = document.getElementById("speed_pid");
+    islandDot = document.getElementById("islandDot");
+    islandValue = document.getElementById("islandValue");
+    errChart = document.getElementById("errChart");
+    speedChart = document.getElementById("speedChart");
     bindThemeToggle();
     bindSliders();
     bindActions();

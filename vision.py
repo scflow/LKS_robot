@@ -5,6 +5,8 @@ import numpy as np
 
 # ROI 顶点缓存，随输入尺寸更新
 vertices = np.array([[(0, 0), (0, 0), (0, 0), (0, 0)]], dtype=np.int32)
+_last_err = 0.0
+_last_segments = []
 
 
 def grayscale(image_bgr: np.ndarray) -> np.ndarray:
@@ -88,17 +90,22 @@ def weighted_img(img: np.ndarray, initial_img: np.ndarray) -> np.ndarray:
 
 
 def draw_lines(line_image: np.ndarray, lines, ref_shape):
+    global _last_err, _last_segments
     right_y_set, right_x_set, right_slope_set, right_intercept_set = [], [], [], []
     left_y_set, left_x_set, left_slope_set, left_intercept_set = [], [], [], []
 
     h, w = ref_shape[:2]
     middle_x = w // 2
     max_y = h
+    top_y = int(h / 3)  # 只绘制到底部-1/3 顶部，并在该高度做误差
 
     draw_segments = []
 
     if not lines:
-        return 0.0, draw_segments
+        # 丢线时返回上次结果，否则给出默认直立车道
+        if _last_segments:
+            return _last_err, _last_segments
+        return 0.0, _default_segments(ref_shape)
 
     for line in lines:
         for x1, y1, x2, y2 in line:
@@ -119,33 +126,47 @@ def draw_lines(line_image: np.ndarray, lines, ref_shape):
     left_x_err = 0.0
 
     if left_y_set:
-        lindex = left_y_set.index(min(left_y_set))
-        left_x_top = left_x_set[lindex]
-        left_y_top = left_y_set[lindex]
         lslope = float(np.median(left_slope_set))
         lintercept = float(np.median(left_intercept_set))
-        left_x_bottom = int(left_x_top + (max_y - left_y_top) / lslope)
-        left_x_err = (max_y - 50 - lintercept) / lslope
-        draw_segments.append({"x1": left_x_bottom, "y1": max_y, "x2": left_x_top, "y2": left_y_top})
+        left_x_bottom = int((max_y - lintercept) / lslope)
+        left_x_top = int((top_y - lintercept) / lslope)
+        left_x_err = (top_y - lintercept) / lslope
+        draw_segments.append({"x1": left_x_bottom, "y1": max_y, "x2": left_x_top, "y2": top_y})
 
     if right_y_set:
-        rindex = right_y_set.index(min(right_y_set))
-        right_x_top = right_x_set[rindex]
-        right_y_top = right_y_set[rindex]
         rslope = float(np.median(right_slope_set))
         rintercept = float(np.median(right_intercept_set))
-        right_x_bottom = int(right_x_top + (max_y - right_y_top) / rslope)
-        right_x_err = (max_y - 50 - rintercept) / rslope
-        draw_segments.append({"x1": right_x_top, "y1": right_y_top, "x2": right_x_bottom, "y2": max_y})
+        right_x_bottom = int((max_y - rintercept) / rslope)
+        right_x_top = int((top_y - rintercept) / rslope)
+        right_x_err = (top_y - rintercept) / rslope
+        draw_segments.append({"x1": right_x_top, "y1": top_y, "x2": right_x_bottom, "y2": max_y})
 
     if right_y_set and left_y_set:
         miderr_x = (right_x_err + left_x_err) / 2.0
-        error = (middle_x - 10) - miderr_x
+        error = (middle_x) - miderr_x
         error = max(min(error, 40), -40)
     else:
+        if _last_segments:
+            return _last_err, _last_segments
         error = 0.0
+        if not draw_segments:
+            draw_segments = _default_segments(ref_shape)
 
+    _last_err = float(error)
+    _last_segments = draw_segments
     return float(error), draw_segments
+
+def _default_segments(shape):
+    h, w = shape[:2]
+    top_y = int(h / 3)
+    left_x_bottom = int(w * 0.35)
+    right_x_bottom = int(w * 0.65)
+    left_x_top = left_x_bottom
+    right_x_top = right_x_bottom
+    return [
+        {"x1": left_x_bottom, "y1": h, "x2": left_x_top, "y2": top_y},
+        {"x1": right_x_bottom, "y1": h, "x2": right_x_top, "y2": top_y},
+    ]
 
 
 def process_image(frame_bgr: np.ndarray, params: Dict[str, Any]) -> Tuple[Dict[str, np.ndarray], float, Dict[str, Any]]:
