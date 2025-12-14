@@ -43,7 +43,10 @@ const ui = (() => {
   let themeIcon;
   let speedLinear;
   let speedPid;
-  let islandDot;
+  let islandCursor;
+  let islandValue;
+  let errorIsland;
+  let islandTrack;
   let errChart;
   let speedChart;
   const errHistory = [];
@@ -152,13 +155,22 @@ const ui = (() => {
   }
 
   function updateIsland(errVal) {
-    if (!islandDot) return;
+    if (!islandCursor) return;
     const e = Number(errVal) || 0;
-    // -40~40 映射到轨道宽度（160px），留 80% 区间
+    if (islandValue) islandValue.textContent = e.toFixed(2);
+    // -40~40 映射到轨道宽度（略留边距）
     const clamped = Math.max(-40, Math.min(40, e));
     const ratio = clamped / 40; // -1..1
-    const maxShift = 70; // px
-    islandDot.style.transform = `translate(${ratio * maxShift}px, -50%)`;
+    let maxShift = 95;
+    if (islandTrack && islandCursor) {
+      const trackHalf = islandTrack.clientWidth / 2;
+      const cursorHalf = islandCursor.clientWidth / 2;
+      maxShift = Math.max(0, trackHalf - cursorHalf - 4);
+    }
+    islandCursor.style.transform = `translate(${ratio * maxShift}px, -50%)`;
+    const warn = Math.abs(e) > 10;
+    islandCursor.classList.toggle("warn", warn);
+    if (errorIsland) errorIsland.classList.toggle("warning", warn);
   }
 
   function pushHistory(arr, val) {
@@ -179,7 +191,27 @@ const ui = (() => {
     const range = max - min || 1;
     const step = data.length > 1 ? w / (data.length - 1) : w;
 
-    ctx.strokeStyle = "rgba(76,141,246,0.85)";
+    // 渐变填充
+    const grad = ctx.createLinearGradient(0, 0, 0, h);
+    const baseColor = opts.color || "#007aff";
+    grad.addColorStop(0, `${baseColor}33`);
+    grad.addColorStop(1, `${baseColor}00`);
+
+    ctx.beginPath();
+    data.forEach((d, i) => {
+      const x = i * step;
+      const y = h - ((d.v - min) / range) * h;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.lineTo(w, h);
+    ctx.lineTo(0, h);
+    ctx.closePath();
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // 线条
+    ctx.strokeStyle = baseColor;
     ctx.lineWidth = 2;
     ctx.beginPath();
     data.forEach((d, i) => {
@@ -189,6 +221,19 @@ const ui = (() => {
       else ctx.lineTo(x, y);
     });
     ctx.stroke();
+
+    // 网格基准线（淡虚线）
+    ctx.strokeStyle = "rgba(128,128,128,0.15)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    [0.25, 0.5, 0.75].forEach(r => {
+      const y = h * r;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y);
+      ctx.stroke();
+    });
+    ctx.setLineDash([]);
   }
 
   function applyTheme(theme) {
@@ -326,6 +371,12 @@ const ui = (() => {
       resizeCanvas();
       drawOverlay();
     });
+    const island = document.getElementById("errorIsland");
+    if (island) {
+      island.addEventListener("click", () => {
+        island.classList.toggle("expanded");
+      });
+    }
     document.getElementById("btnFullscreen").addEventListener("click", () => {
       const wrap = videoWrap || streamImage.parentElement;
       if (!document.fullscreenElement) {
@@ -395,22 +446,46 @@ const ui = (() => {
   async function pollStatus() {
     try {
       const s = await api.loadStatus();
-      const view = `
-        <div class="status-tile"><span class="sub">模式</span><strong>${s.mode}</strong></div>
-        <div class="status-tile"><span class="sub">FPS</span><strong>${Number(s.fps).toFixed(1)}</strong></div>
-        <div class="status-tile"><span class="sub">err</span><strong>${Number(s.err).toFixed(2)}</strong></div>
-        <div class="status-tile"><span class="sub">servo</span><strong>${s.servo_position}</strong></div>
-        <div class="status-tile"><span class="sub">motor</span><strong>${Number(s.motor_duty).toFixed(2)}</strong></div>
-        <div class="status-tile"><span class="sub">串口</span><strong>${s.chassis_connected}</strong><div class="mono" style="color:${s.chassis_error ? '#f45b69':'var(--sub)'}">${s.chassis_error || ''}</div></div>
+      const chassisOk = !!s.chassis_connected;
+      const statusHtml = `
+        <div class="status-grid">
+          <div class="stat-box">
+            <span class="stat-label">MODE</span>
+            <span class="stat-value">${(s.mode || "auto").toString().toUpperCase()}</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">FPS</span>
+            <span class="stat-value">${Number(s.fps).toFixed(1)}</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">OFFSET</span>
+            <span class="stat-value">${Number(s.err).toFixed(2)}</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">STEERING</span>
+            <span class="stat-value">${s.servo_position}</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">THROTTLE</span>
+            <span class="stat-value">${Number(s.motor_duty).toFixed(2)}</span>
+          </div>
+          <div class="status-row ${chassisOk ? "" : "error"}" title="${chassisOk ? "Chassis Connected" : (s.chassis_error || "Connection Failed")}">
+            <div class="status-text">
+              <span class="title">Chassis</span>
+              <span class="desc">${chassisOk ? "Connected" : "Connection Failed"}</span>
+            </div>
+            <div class="status-indicator ${chassisOk ? "green" : "red"}"></div>
+          </div>
+        </div>
       `;
-      document.getElementById("status").innerHTML = view;
+      document.getElementById("status").innerHTML = statusHtml;
       backendOverlay = s.overlay || null;
       updateCameraIndicator(s);
       updateIsland(s.err || 0);
       pushHistory(errHistory, Number(s.err) || 0);
       pushHistory(speedHistory, Number(s.motor_duty) || 0);
-      drawSparkline(errChart, errHistory, { min: -40, max: 40 });
-      drawSparkline(speedChart, speedHistory, { min: 0, max: 0.2 });
+      drawSparkline(errChart, errHistory, { min: -40, max: 40, color: "#00c7be" });
+      drawSparkline(speedChart, speedHistory, { min: 0, max: 0.2, color: "#ff9f0a" });
       resizeCanvas();
       drawOverlay();
     } catch (e) {}
@@ -427,7 +502,10 @@ const ui = (() => {
     camChip = document.getElementById("camChip");
     speedLinear = document.getElementById("speed_linear");
     speedPid = document.getElementById("speed_pid");
-    islandDot = document.getElementById("islandDot");
+    islandCursor = document.getElementById("islandCursor");
+    islandValue = document.getElementById("islandValue");
+    errorIsland = document.getElementById("errorIsland");
+    islandTrack = document.querySelector(".island-track");
     errChart = document.getElementById("errChart");
     speedChart = document.getElementById("speedChart");
     bindThemeToggle();
