@@ -60,7 +60,12 @@ class LQRController:
         return u
 
 
-def build_default_lqr(dt: float = 0.05, velocity: float = 0.6) -> LQRController:
+def build_default_lqr(
+    dt: float = 0.05,
+    velocity: float = 0.6,
+    q_diag: Tuple[float, float] = (5.0, 1.0),
+    r: float = 0.8,
+) -> LQRController:
     """
     基于简单二阶模型的默认 LQR：
     x = [横向误差, 航向误差]，输入为方向控制量。
@@ -73,6 +78,6 @@ def build_default_lqr(dt: float = 0.05, velocity: float = 0.6) -> LQRController:
         [0.0],
         [velocity * dt],
     ])
-    Q = np.diag([5.0, 1.0])
-    R = np.array([[0.8]])
+    Q = np.diag(q_diag)
+    R = np.array([[r]])
     return LQRController(A, B, Q, R, output_limits=None)

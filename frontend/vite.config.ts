@@ -15,6 +15,9 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+    host: true,
+    port: 8001,
+    strictPort: true
   },
   build: {
     outDir: '../dist',

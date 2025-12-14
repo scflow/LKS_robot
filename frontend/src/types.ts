@@ -6,8 +6,15 @@ export interface RobotParams {
   hof_max_line_gap: number;
 
   auto_drive: number; // 0/1
+  steer_mode: number; // 0 kp, 1 lqr
   steer_k: number;
   steer_invert: number;
+  steer_center: number;
+  lqr_q1: number;
+  lqr_q2: number;
+  lqr_r: number;
+  lqr_dt: number;
+  lqr_velocity: number;
 
   // 速度控制
   speed_mode: number; // 0: linear, 1: PID

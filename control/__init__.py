@@ -34,9 +34,16 @@ DEFAULT_PARAMS: Dict[str, Any] = {
     "auto_drive": 0,
 
     # 转向控制（比例）
+    "steer_mode": 0,  # 0=比例，1=LQR
     "steer_center": CENTER_POSITION,
     "steer_k": 8.0,
     "steer_invert": 1,
+    # LQR 参数
+    "lqr_q1": 5.0,
+    "lqr_q2": 1.0,
+    "lqr_r": 0.8,
+    "lqr_dt": 0.05,
+    "lqr_velocity": 0.6,
 
     # 线性降速模式（speed_mode=0）
     "motor_base": 0.10,
@@ -75,9 +82,15 @@ PARAM_TYPES: Dict[str, str] = {
 
     "auto_drive": "int",
 
+    "steer_mode": "int",
     "steer_center": "int",
     "steer_k": "float",
     "steer_invert": "int",
+    "lqr_q1": "float",
+    "lqr_q2": "float",
+    "lqr_r": "float",
+    "lqr_dt": "float",
+    "lqr_velocity": "float",
 
     "motor_base": "float",
     "motor_k": "float",
@@ -146,10 +159,12 @@ latest_overlay: Dict[str, Any] = {
 # 速度 PID 控制器
 _speed_pid = SpeedPIDController()
 _last_motor = 0.0
+_lqr = None
+_last_lqr_cfg = None
 
 
 def compute_control(err: float):
-    global _last_motor
+    global _last_motor, _lqr, _last_lqr_cfg
     with lock:
         auto = int(params["auto_drive"]) == 1
         scs_mode = int(params["scs_mode"])
@@ -161,8 +176,14 @@ def compute_control(err: float):
             return motor, servo, scs_mode, headlight, "manual"
 
         center = int(params["steer_center"])
+        steer_mode = int(params.get("steer_mode", 0))
         steer_k = float(params["steer_k"])
         inv = int(params["steer_invert"])
+        lqr_q1 = float(params.get("lqr_q1", 5.0))
+        lqr_q2 = float(params.get("lqr_q2", 1.0))
+        lqr_r = float(params.get("lqr_r", 0.8))
+        lqr_dt = float(params.get("lqr_dt", 0.05))
+        lqr_vel = float(params.get("lqr_velocity", 0.6))
 
         base = float(params["motor_base"])
         mk = float(params["motor_k"])
@@ -177,7 +198,26 @@ def compute_control(err: float):
         pid_dt = float(params.get("speed_dt", _speed_pid.dt))
         slowdown_gain = float(params.get("speed_slowdown_gain", _speed_pid.slowdown_gain))
 
-    servo = int(center + inv * steer_k * err)
+    # 方向控制
+    servo = None
+    if steer_mode == 1:
+        cfg = (lqr_q1, lqr_q2, lqr_r, lqr_dt, lqr_vel)
+        if _lqr is None or _last_lqr_cfg != cfg:
+            try:
+                _lqr = build_default_lqr(dt=lqr_dt, velocity=lqr_vel, q_diag=(lqr_q1, lqr_q2), r=lqr_r)
+                _last_lqr_cfg = cfg
+            except Exception:
+                _lqr = None
+        if _lqr is not None:
+            try:
+                u = _lqr.control([err, 0.0])
+                servo = int(center + inv * u)
+            except Exception:
+                servo = None
+
+    if servo is None:
+        servo = int(center + inv * steer_k * err)
+
     servo = int(clamp(servo, MIN_POSITION, MAX_POSITION))
 
     if speed_mode == 1:

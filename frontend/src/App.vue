@@ -193,7 +193,8 @@ onUnmounted(() => {
           <StatusGrid :tiles="statusTiles" :chassis-ok="statusRef.chassis_connected" :chassis-error="statusRef.chassis_error" />
           <div class="section">
             <div class="flex">
-              <button id="btnToggle">切换：Manual</button>
+              <button id="btnAuto" :class="statusRef.mode === 'auto' ? '' : 'ghost'" @click="() => updateParam('auto_drive', 1)">切换：Auto</button>
+              <button id="btnManual" :class="statusRef.mode === 'manual' ? '' : 'ghost'" @click="() => updateParam('auto_drive', 0)">切换：Manual</button>
               <button id="btnEstop" class="danger" @click="estop">急停 (E-STOP)</button>
             </div>
           </div>
@@ -211,12 +212,29 @@ onUnmounted(() => {
         </div>
 
         <div class="card">
-          <h3>自动控制参数</h3>
+          <h3>自动控制参数（转向）</h3>
           <div class="stack">
-            <PrecisionControl label="steer_k" :min="0" :max="30" :step="0.1" v-model="params.steer_k" @change="val => updateParam('steer_k', val)" />
+            <div class="field">
+              <label>转向模式</label>
+              <div>
+                <select class="select" :value="params.steer_mode" @change="e => updateParam('steer_mode', Number((e.target as HTMLSelectElement).value))">
+                  <option value="0">比例 (Kp)</option>
+                  <option value="1">LQR</option>
+                </select>
+              </div>
+            </div>
+            <PrecisionControl label="steer_center" :min="800" :max="2200" :step="1" v-model="params.steer_center" @change="val => updateParam('steer_center', val)" />
             <PrecisionControl label="steer_invert (1/-1)" :min="-1" :max="1" :step="2" v-model="params.steer_invert" @change="val => updateParam('steer_invert', val)" />
-            <PrecisionControl label="motor_base" :min="0" :max="0.2" :step="0.01" v-model="params.motor_base" @change="val => updateParam('motor_base', val)" />
-            <PrecisionControl label="motor_k" :min="0" :max="0.01" :step="0.0005" v-model="params.motor_k" @change="val => updateParam('motor_k', val)" />
+            <div v-show="params.steer_mode === 0" class="stack">
+              <PrecisionControl label="steer_k" :min="0" :max="30" :step="0.1" v-model="params.steer_k" @change="val => updateParam('steer_k', val)" />
+            </div>
+            <div v-show="params.steer_mode === 1" class="stack">
+              <PrecisionControl label="lqr_q1" :min="0.1" :max="20" :step="0.1" v-model="params.lqr_q1" @change="val => updateParam('lqr_q1', val)" />
+              <PrecisionControl label="lqr_q2" :min="0.1" :max="20" :step="0.1" v-model="params.lqr_q2" @change="val => updateParam('lqr_q2', val)" />
+              <PrecisionControl label="lqr_r" :min="0.1" :max="10" :step="0.1" v-model="params.lqr_r" @change="val => updateParam('lqr_r', val)" />
+              <PrecisionControl label="lqr_dt" :min="0.01" :max="0.2" :step="0.005" v-model="params.lqr_dt" @change="val => updateParam('lqr_dt', val)" />
+              <PrecisionControl label="lqr_velocity" :min="0.1" :max="2" :step="0.05" v-model="params.lqr_velocity" @change="val => updateParam('lqr_velocity', val)" />
+            </div>
           </div>
         </div>
 
