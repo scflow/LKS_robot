@@ -1,6 +1,7 @@
 import time
 import threading
 from typing import Dict
+import platform
 
 import cv2 as cv
 import numpy as np
@@ -10,16 +11,52 @@ from control import compute_control, latest_frames, latest_status, latest_overla
 from vision import process_image
 
 
+def _open_capture(preferred_index, width, height):
+    """Try a couple of camera indices/backends and return the first opened capture."""
+    tried = []
+    for idx in ([preferred_index] + ([0] if preferred_index != 0 else [])):
+        # Try with V4L2 first on Linux, otherwise skip to default backend.
+        if platform.system().lower() == "linux":
+            cap = cv.VideoCapture(idx, cv.CAP_V4L2)
+            tried.append(f"{idx}(v4l2)")
+            if cap.isOpened():
+                cap.set(cv.CAP_PROP_FRAME_WIDTH, width)
+                cap.set(cv.CAP_PROP_FRAME_HEIGHT, height)
+                cap.set(cv.CAP_PROP_FOURCC, cv.VideoWriter_fourcc(*"MJPG"))
+                return cap, idx, tried
+            cap.release()
+        # macOS: AVFoundation backend
+        if platform.system().lower() == "darwin":
+            cap = cv.VideoCapture(idx, cv.CAP_AVFOUNDATION)
+            tried.append(f"{idx}(avfoundation)")
+            if cap.isOpened():
+                cap.set(cv.CAP_PROP_FRAME_WIDTH, width)
+                cap.set(cv.CAP_PROP_FRAME_HEIGHT, height)
+                cap.set(cv.CAP_PROP_FOURCC, cv.VideoWriter_fourcc(*"MJPG"))
+                return cap, idx, tried
+            cap.release()
+        cap = cv.VideoCapture(idx)
+        tried.append(f"{idx}(default)")
+        if cap.isOpened():
+            cap.set(cv.CAP_PROP_FRAME_WIDTH, width)
+            cap.set(cv.CAP_PROP_FRAME_HEIGHT, height)
+            cap.set(cv.CAP_PROP_FOURCC, cv.VideoWriter_fourcc(*"MJPG"))
+            return cap, idx, tried
+        cap.release()
+    return None, None, tried
+
+
 def camera_loop(camera_index=0, width=320, height=240):
-    cap = cv.VideoCapture(camera_index, cv.CAP_V4L2)
-    cap.set(cv.CAP_PROP_FRAME_WIDTH, width)
-    cap.set(cv.CAP_PROP_FRAME_HEIGHT, height)
-    cap.set(cv.CAP_PROP_FOURCC, cv.VideoWriter_fourcc(*"MJPG"))
+    cap, used_idx, tried = _open_capture(camera_index, width, height)
 
     with lock:
         latest_status["running"] = True
-        latest_status["camera_connected"] = bool(cap.isOpened())
-        latest_status["camera_error"] = "" if cap.isOpened() else "open camera failed"
+        ok_open = cap is not None and cap.isOpened()
+        latest_status["camera_connected"] = ok_open
+        if ok_open:
+            latest_status["camera_error"] = ""
+        else:
+            latest_status["camera_error"] = f"open camera failed, tried: {', '.join(tried)}"
 
     ok = chassis.open()
     with lock:

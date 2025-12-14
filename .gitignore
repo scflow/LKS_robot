@@ -1,3 +1,14 @@
 .idea/
 __pycache__/
 .vscode/
+.venv/
+dist/
+*.pyc
+*.pyo
+*.pyd
+*.log
+
+# Frontend build artifacts
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
