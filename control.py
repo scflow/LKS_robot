@@ -24,7 +24,7 @@ params: Dict[str, Any] = {
     "hof_max_line_gap": 10,
 
     # 模式：1=自动巡线，0=手动
-    "auto_drive": 1,
+    "auto_drive": 0,
 
     # 自动控制参数
     "steer_center": CENTER_POSITION,
@@ -87,7 +87,7 @@ latest_status: Dict[str, Any] = {
     "camera_error": "",
     "chassis_connected": False,
     "chassis_error": "",
-    "mode": "auto",  # auto/manual
+    "mode": "manual",  # auto/manual
 }
 
 # 前端绘制所需的覆盖信息（由 vision 填充）
