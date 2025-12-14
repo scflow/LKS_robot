@@ -44,7 +44,6 @@ const ui = (() => {
   let speedLinear;
   let speedPid;
   let islandDot;
-  let islandValue;
   let errChart;
   let speedChart;
   const errHistory = [];
@@ -153,9 +152,8 @@ const ui = (() => {
   }
 
   function updateIsland(errVal) {
-    if (!islandDot || !islandValue) return;
+    if (!islandDot) return;
     const e = Number(errVal) || 0;
-    islandValue.textContent = e.toFixed(1);
     // -40~40 映射到轨道宽度（160px），留 80% 区间
     const clamped = Math.max(-40, Math.min(40, e));
     const ratio = clamped / 40; // -1..1
@@ -430,7 +428,6 @@ const ui = (() => {
     speedLinear = document.getElementById("speed_linear");
     speedPid = document.getElementById("speed_pid");
     islandDot = document.getElementById("islandDot");
-    islandValue = document.getElementById("islandValue");
     errChart = document.getElementById("errChart");
     speedChart = document.getElementById("speedChart");
     bindThemeToggle();

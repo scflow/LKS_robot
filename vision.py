@@ -1,3 +1,4 @@
+import time
 from typing import Any, Dict, Tuple
 
 import cv2 as cv
@@ -7,6 +8,47 @@ import numpy as np
 vertices = np.array([[(0, 0), (0, 0), (0, 0), (0, 0)]], dtype=np.int32)
 _last_err = 0.0
 _last_segments = []
+_last_ts = None
+
+
+class OneEuroFilter:
+    """一欧元滤波器，用于对误差做强平滑。"""
+    def __init__(self, min_cutoff=0.5, beta=0.003, d_cutoff=1.0):
+        self.min_cutoff = float(min_cutoff)
+        self.beta = float(beta)
+        self.d_cutoff = float(d_cutoff)
+        self.x_prev = None
+        self.dx_prev = None
+        self.t_prev = None
+
+    @staticmethod
+    def _alpha(cutoff, dt):
+        tau = 1.0 / (2 * np.pi * cutoff)
+        return 1.0 / (1.0 + tau / dt) if dt > 0 else 1.0
+
+    def __call__(self, x, t):
+        if self.t_prev is None:
+            self.t_prev = t
+            self.x_prev = x
+            self.dx_prev = 0.0
+            return x
+
+        dt = max(t - self.t_prev, 1e-6)
+        dx = (x - self.x_prev) / dt
+        alpha_d = self._alpha(self.d_cutoff, dt)
+        dx_hat = alpha_d * dx + (1 - alpha_d) * self.dx_prev
+
+        cutoff = self.min_cutoff + self.beta * abs(dx_hat)
+        alpha = self._alpha(cutoff, dt)
+        x_hat = alpha * x + (1 - alpha) * self.x_prev
+
+        self.x_prev = x_hat
+        self.dx_prev = dx_hat
+        self.t_prev = t
+        return float(x_hat)
+
+
+_err_filter = OneEuroFilter(min_cutoff=0.6, beta=0.003, d_cutoff=1.0)
 
 
 def grayscale(image_bgr: np.ndarray) -> np.ndarray:
@@ -97,7 +139,7 @@ def draw_lines(line_image: np.ndarray, lines, ref_shape):
     h, w = ref_shape[:2]
     middle_x = w // 2
     max_y = h
-    top_y = int(h / 3)  # 只绘制到底部-1/3 顶部，并在该高度做误差
+    top_y = int(h * 0.6)  # 60% 高度取中点
 
     draw_segments = []
 
@@ -158,7 +200,7 @@ def draw_lines(line_image: np.ndarray, lines, ref_shape):
 
 def _default_segments(shape):
     h, w = shape[:2]
-    top_y = int(h / 3)
+    top_y = int(h * 0.6)
     left_x_bottom = int(w * 0.35)
     right_x_bottom = int(w * 0.65)
     left_x_top = left_x_bottom
@@ -183,7 +225,9 @@ def process_image(frame_bgr: np.ndarray, params: Dict[str, Any]) -> Tuple[Dict[s
     filtered = bypass_angle_filter(lines)
 
     line_image = np.zeros_like(frame_bgr)
-    err, draw_segments = draw_lines(line_image, filtered, frame_bgr.shape)
+    err_raw, draw_segments = draw_lines(line_image, filtered, frame_bgr.shape)
+    now = time.time()
+    err = _err_filter(err_raw, now)
     mask_bgr = cv.cvtColor(mask, cv.COLOR_GRAY2BGR)
     processed = cv.bitwise_and(frame_bgr, mask_bgr)  # 只展示 ROI 内部区域
 

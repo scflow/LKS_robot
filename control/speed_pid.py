@@ -1,9 +1,7 @@
 """
 速度 PID 控制器：在目标速度基础上按横向误差降速，输出 duty。
+兼容较老 Python 版本，不依赖 dataclasses。
 """
-from __future__ import annotations
-
-from dataclasses import dataclass
 from typing import Tuple
 
 
@@ -11,16 +9,22 @@ def _clamp(v: float, lo: float, hi: float) -> float:
     return lo if v < lo else hi if v > hi else v
 
 
-@dataclass
 class SpeedPIDController:
-    kp: float = 0.6
-    ki: float = 0.1
-    kd: float = 0.02
-    dt: float = 0.02
-    output_limits: Tuple[float, float] = (0.0, 0.2)
-    slowdown_gain: float = 0.002  # 横向误差增大时的降速比例（|err|*gain）
-
-    def __post_init__(self):
+    def __init__(
+        self,
+        kp: float = 0.6,
+        ki: float = 0.1,
+        kd: float = 0.02,
+        dt: float = 0.02,
+        output_limits: Tuple[float, float] = (0.0, 0.2),
+        slowdown_gain: float = 0.002,
+    ):
+        self.kp = kp
+        self.ki = ki
+        self.kd = kd
+        self.dt = dt
+        self.output_limits = output_limits
+        self.slowdown_gain = slowdown_gain  # 横向误差增大时的降速比例（|err|*gain）
         self._integral = 0.0
         self._prev_err = 0.0
 

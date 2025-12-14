@@ -61,11 +61,9 @@ header { display: flex; align-items: center; justify-content: space-between; gap
 .video-wrap img { width: 100%; display: block; object-fit: cover; }
 .overlay-canvas { position:absolute; inset:0; pointer-events:none; }
 .overlay-canvas.editing { pointer-events:auto; cursor:crosshair; }
-.error-island { position:absolute; top:10px; left:50%; transform:translateX(-50%); background: rgba(0,0,0,0.65); border:1px solid rgba(255,255,255,0.08); color:#fff; padding:8px 12px; border-radius:999px; display:flex; align-items:center; gap:10px; box-shadow:0 8px 24px rgba(0,0,0,0.25); z-index:2; pointer-events:none; }
-.island-track { position:relative; width:160px; height:10px; background: rgba(255,255,255,0.12); border-radius:999px; overflow:hidden; }
-.island-dot { position:absolute; top:50%; left:50%; width:18px; height:18px; margin-top:-9px; margin-left:-9px; border-radius:50%; background:#fff; box-shadow:0 6px 16px rgba(0,0,0,0.35); transition: transform 0.12s ease; }
-.island-label { font-size:12px; color: #d4d8e0; }
-.island-value { font-family:"SFMono-Regular", Consolas, Menlo, monospace; font-weight:700; }
+.error-island { position:absolute; top:12px; left:50%; transform:translateX(-50%); background: rgba(0,0,0,0.65); border:1px solid rgba(255,255,255,0.08); padding:10px 14px; border-radius:999px; display:flex; align-items:center; gap:10px; box-shadow:0 8px 24px rgba(0,0,0,0.25); z-index:2; pointer-events:none; }
+.island-track { position:relative; width:160px; height:14px; background: rgba(255,255,255,0.14); border-radius:999px; overflow:hidden; }
+.island-dot { position:absolute; top:50%; left:50%; width:16px; height:16px; margin-top:-8px; margin-left:-8px; border-radius:50%; background:#fff; box-shadow:0 6px 16px rgba(0,0,0,0.35); transition: transform 0.12s ease; }
 .video-tools { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
 .video-header { display:flex; align-items:center; justify-content: space-between; gap:10px; margin-bottom: 10px; }
 .select { background: var(--card-strong); color: var(--text); border:1px solid var(--border); border-radius: 10px; padding: 8px 10px; font-size: 14px; width: 100%; }

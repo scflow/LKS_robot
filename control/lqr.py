@@ -4,7 +4,6 @@
 状态 x 默认包含 [横向误差, 航向误差]，输出 u 可用于舵机偏转。
 默认提供基于二阶近似模型的构建函数 `build_default_lqr`。
 """
-from __future__ import annotations
 
 from typing import Iterable, Tuple
 
@@ -43,7 +42,7 @@ class LQRController:
         B: Iterable[Iterable[float]],
         Q: Iterable[Iterable[float]],
         R: Iterable[Iterable[float]],
-        output_limits: Tuple[float, float] | None = None,
+        output_limits: Tuple[float, float] = None,
     ):
         self.A = _as_array(A)
         self.B = _as_array(B)
