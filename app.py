@@ -22,6 +22,11 @@ def app_js():
     return send_from_directory("templates", "app.js")
 
 
+@app.route("/assets/<path:name>")
+def assets(name: str):
+    return send_from_directory("assets", name)
+
+
 @app.route("/stream/<name>")
 def stream(name: str):
     if name not in {"raw", "gray", "blur", "canny", "roi", "processed"}:

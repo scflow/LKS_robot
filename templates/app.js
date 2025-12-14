@@ -37,6 +37,7 @@ const ui = (() => {
   let camDot;
   let camText;
   let camChip;
+  let themeButtons = [];
 
   function setVal(id, v) {
     const el = document.getElementById(id);
@@ -131,6 +132,26 @@ const ui = (() => {
     camDot.classList.toggle("bad", !ok);
     camText.textContent = ok ? "摄像头已连接" : (status.camera_error || "摄像头未连接");
     if (camChip) camChip.title = status.camera_error || "";
+  }
+
+  function applyTheme(theme) {
+    const t = theme === "light" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", t);
+    localStorage.setItem("theme", t);
+    themeButtons.forEach(btn => {
+      btn.classList.toggle("active", btn.dataset.theme === t);
+    });
+  }
+
+  function bindThemeToggle() {
+    themeButtons = Array.from(document.querySelectorAll(".theme-btn"));
+    themeButtons.forEach(btn => {
+      btn.addEventListener("click", () => {
+        applyTheme(btn.dataset.theme || "dark");
+      });
+    });
+    const saved = localStorage.getItem("theme") || "dark";
+    applyTheme(saved);
   }
 
   function schedulePost(extraPayload=null) {
@@ -324,6 +345,7 @@ const ui = (() => {
     camDot = document.getElementById("camDot");
     camText = document.getElementById("camText");
     camChip = document.getElementById("camChip");
+    bindThemeToggle();
     bindSliders();
     bindActions();
     bindROI();
