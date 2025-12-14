@@ -83,6 +83,8 @@ latest_status: Dict[str, Any] = {
     "servo_position": CENTER_POSITION,
     "motor_duty": 0.0,
     "running": False,
+    "camera_connected": False,
+    "camera_error": "",
     "chassis_connected": False,
     "chassis_error": "",
     "mode": "auto",  # auto/manual
@@ -94,6 +96,7 @@ latest_overlay: Dict[str, Any] = {
     "lines": [],
     "frame": {"w": 0, "h": 0},
     "err": 0.0,
+    "roi_source": "default",
 }
 
 

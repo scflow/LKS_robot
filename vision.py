@@ -25,18 +25,27 @@ def region_of_interest(image: np.ndarray, params: Dict[str, Any]):
 
     roi_points = params.get("roi_points") or []
     valid_roi = []
+    used_custom = False
     try:
         for p in roi_points:
             if not isinstance(p, (list, tuple)) or len(p) != 2:
                 continue
             x, y = float(p[0]), float(p[1])
+            # 支持 0~1 规范化坐标；如果传入像素值也允许使用
             if 0.0 <= x <= 1.0 and 0.0 <= y <= 1.0:
-                valid_roi.append((int(x * imshape[1]), int(y * imshape[0])))
+                px = int(x * imshape[1])
+                py = int(y * imshape[0])
+            else:
+                px = int(x)
+                py = int(y)
+            if 0 <= px < imshape[1] and 0 <= py < imshape[0]:
+                valid_roi.append((px, py))
     except Exception:
         valid_roi = []
 
     if len(valid_roi) >= 3:
         vertices = np.array([valid_roi], dtype=np.int32)
+        used_custom = True
     else:
         vertices = np.array([[
             (10, imshape[0]),
@@ -44,11 +53,12 @@ def region_of_interest(image: np.ndarray, params: Dict[str, Any]):
             (imshape[1] * 29 / 34, imshape[0] * 2 / 3),
             (imshape[1] - 20, imshape[0])
         ]], dtype=np.int32)
+        used_custom = False
 
     mask = np.zeros_like(image)
     ignore_mask_color = 255 if len(image.shape) == 2 else (255,) * image.shape[2]
     cv.fillPoly(mask, vertices, ignore_mask_color)
-    return cv.bitwise_and(image, mask), mask
+    return cv.bitwise_and(image, mask), mask, vertices, used_custom
 
 
 def hough_lines(edge_roi: np.ndarray, threshold: int, min_line_len: int, max_line_gap: int):
@@ -147,7 +157,7 @@ def process_image(frame_bgr: np.ndarray, params: Dict[str, Any]) -> Tuple[Dict[s
     gray = grayscale(frame_bgr)
     blur = gaussian_blur(gray)
     edges = canny(blur, low)
-    roi, mask = region_of_interest(edges, params)
+    roi, mask, roi_vertices, roi_custom = region_of_interest(edges, params)
     lines = hough_lines(roi, threshold, min_line_len, max_line_gap)
     filtered = bypass_angle_filter(lines)
 
@@ -169,7 +179,7 @@ def process_image(frame_bgr: np.ndarray, params: Dict[str, Any]) -> Tuple[Dict[s
         "roi": roi_bgr,
         "processed": processed,
     }, err, {
-        "roi": [[int(p[0]), int(p[1])] for p in (vertices.tolist()[0] if len(vertices) > 0 else [])],
+        "roi": [[int(p[0]), int(p[1])] for p in (roi_vertices.tolist()[0] if len(roi_vertices) > 0 else [])],
         "lines": [
             {
                 "x1": int(seg["x1"]),
@@ -180,4 +190,5 @@ def process_image(frame_bgr: np.ndarray, params: Dict[str, Any]) -> Tuple[Dict[s
         ],
         "frame": {"w": int(frame_bgr.shape[1]), "h": int(frame_bgr.shape[0])},
         "err": float(err),
+        "roi_source": "custom" if roi_custom else "default",
     }

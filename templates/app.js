@@ -34,6 +34,9 @@ const ui = (() => {
   let roiPoints = [];
   let videoWrap;
   let backendOverlay = null;
+  let camDot;
+  let camText;
+  let camChip;
 
   function setVal(id, v) {
     const el = document.getElementById(id);
@@ -119,6 +122,15 @@ const ui = (() => {
         ctx.fill();
       });
     }
+  }
+
+  function updateCameraIndicator(status) {
+    if (!camDot || !camText) return;
+    const ok = !!status.camera_connected;
+    camDot.classList.toggle("ok", ok);
+    camDot.classList.toggle("bad", !ok);
+    camText.textContent = ok ? "摄像头已连接" : (status.camera_error || "摄像头未连接");
+    if (camChip) camChip.title = status.camera_error || "";
   }
 
   function schedulePost(extraPayload=null) {
@@ -264,6 +276,8 @@ const ui = (() => {
         roiPoints.push({ x, y });
         document.getElementById("roi_count").textContent = roiPoints.length;
         drawOverlay();
+        // 实时下发 ROI（点数 <3 时视为清空，>=3 才生效）
+        schedulePost({ roi_points: roiPoints.length >= 3 ? roiPoints.map(p => [p.x, p.y]) : [] });
       });
       overlay.addEventListener("dblclick", () => {
         if (!editing) return;
@@ -295,6 +309,7 @@ const ui = (() => {
       `;
       document.getElementById("status").innerHTML = view;
       backendOverlay = s.overlay || null;
+      updateCameraIndicator(s);
       resizeCanvas();
       drawOverlay();
     } catch (e) {}
@@ -306,6 +321,9 @@ const ui = (() => {
     streamImage = document.getElementById("streamImage");
     overlay = document.getElementById("overlay");
     videoWrap = document.querySelector(".video-wrap");
+    camDot = document.getElementById("camDot");
+    camText = document.getElementById("camText");
+    camChip = document.getElementById("camChip");
     bindSliders();
     bindActions();
     bindROI();

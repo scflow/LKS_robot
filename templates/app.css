@@ -29,8 +29,13 @@ body {
 .shell { max-width: 1220px; margin: 0 auto; padding: 20px 16px 48px; }
 header { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 14px; }
 .logo { font-weight: 700; letter-spacing: 0.5px; font-size: 18px; display:flex; align-items:center; gap:10px;}
+.header-right { display:flex; align-items:center; gap:10px; }
 .pill { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius: 999px; border:1px solid var(--border); background: rgba(255,255,255,0.03); color: var(--sub); font-size: 12px;}
 .pill strong { color: var(--text); font-weight: 600; }
+.status-chip { display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:12px; border:1px solid var(--border); background: rgba(255,255,255,0.04); color: var(--sub); font-size: 12px; }
+.status-dot { width:10px; height:10px; border-radius:50%; background: var(--sub); box-shadow: 0 0 0 4px rgba(255,255,255,0.04); }
+.status-dot.ok { background: var(--accent); box-shadow: 0 0 0 6px rgba(58,200,182,0.14); }
+.status-dot.bad { background: var(--danger); box-shadow: 0 0 0 6px rgba(244,91,105,0.18); }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
 .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow); }
 .card h3 { margin: 0 0 10px; font-size: 16px; font-weight: 700; letter-spacing: 0.2px; }

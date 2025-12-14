@@ -18,6 +18,8 @@ def camera_loop(camera_index=0, width=320, height=240):
 
     with lock:
         latest_status["running"] = True
+        latest_status["camera_connected"] = bool(cap.isOpened())
+        latest_status["camera_error"] = "" if cap.isOpened() else "open camera failed"
 
     ok = chassis.open()
     with lock:
@@ -32,8 +34,13 @@ def camera_loop(camera_index=0, width=320, height=240):
         ok, frame = cap.read()
         if not ok or frame is None:
             frame = np.zeros((height, width, 3), dtype=np.uint8)
-            cv.putText(frame, "Camera not ready", (10, height // 2),
-                       cv.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+            with lock:
+                latest_status["camera_connected"] = False
+                latest_status["camera_error"] = "no frame"
+        else:
+            with lock:
+                latest_status["camera_connected"] = True
+                latest_status["camera_error"] = ""
 
         with lock:
             local_params: Dict = dict(params)
